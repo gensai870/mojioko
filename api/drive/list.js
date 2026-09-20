@@ -2,7 +2,7 @@ const drive = require('../../lib/googleDrive');
 
 module.exports = async function handler(req, res) {
   const url = new URL(req.url, 'http://x');
-  const folderId = url.searchParams.get('folderId') || process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const folderId = url.searchParams.get('folderId') || (process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim();
   if (!folderId) return res.status(400).json({ error: { message: 'フォルダIDが指定されていません' } });
   try {
     const files = await drive.listFilesInFolder(folderId);

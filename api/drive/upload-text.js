@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
   }
   const { fileName, content, folderId } = body;
   if (!content) return res.status(400).json({ error: { message: '保存する内容がありません' } });
-  const targetFolderId = folderId || process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID;
+  const targetFolderId = folderId || (process.env.GOOGLE_DRIVE_UPLOAD_FOLDER_ID || '').trim();
   if (!targetFolderId) return res.status(400).json({ error: { message: '保存先フォルダIDが設定されていません' } });
   try {
     const file = await drive.uploadTextFile(targetFolderId, fileName || 'output.txt', content);
