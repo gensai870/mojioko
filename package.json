@@ -7,6 +7,7 @@
     "dev": "vercel dev"
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "googleapis": "^144.0.0"
   }
 }
