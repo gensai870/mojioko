@@ -5,5 +5,8 @@
   "description": "mojioko Web版(試験) - Vercelホスティングの文字起こしトライアル",
   "scripts": {
     "dev": "vercel dev"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }
