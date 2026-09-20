@@ -1,0 +1,9 @@
+{
+  "name": "mojioko-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "mojioko Web版(試験) - Vercelホスティングの文字起こしトライアル",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
