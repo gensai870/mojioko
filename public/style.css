@@ -162,6 +162,24 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
 }
 .drive-file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #12141a;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 6px 5px 12px;
+  font-size: 12px;
+  margin: 0 6px 6px 0;
+  cursor: pointer;
+}
+.folder-chip:hover { border-color: var(--accent); }
+.folder-chip .remove {
+  background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1;
+  padding: 2px 4px;
+}
+
 .footer-note {
   text-align: center;
   font-size: 12px;

@@ -252,6 +252,52 @@ $('#driveDisconnectBtn').addEventListener('click', async () => {
   refreshDriveStatus();
 });
 
+// フォルダID履歴(localStorageのみ、複数フォルダを切り替えて使うため)
+const DRIVE_FOLDER_HISTORY_KEY = 'mojioko:driveFolderHistory';
+function loadFolderHistory() {
+  try { return JSON.parse(localStorage.getItem(DRIVE_FOLDER_HISTORY_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveFolderHistory(list) {
+  localStorage.setItem(DRIVE_FOLDER_HISTORY_KEY, JSON.stringify(list.slice(0, 10)));
+}
+async function rememberFolder(folderId) {
+  const list = loadFolderHistory().filter((f) => f.id !== folderId);
+  let name = folderId;
+  try {
+    const res = await fetch(`/api/drive/folder-name?folderId=${encodeURIComponent(folderId)}`);
+    const data = await res.json();
+    if (data.name) name = data.name;
+  } catch (e) { /* ignore */ }
+  list.unshift({ id: folderId, name });
+  saveFolderHistory(list);
+  renderFolderHistory();
+}
+function renderFolderHistory() {
+  const el = $('#driveFolderHistory');
+  const list = loadFolderHistory();
+  el.innerHTML = '';
+  list.forEach((f) => {
+    const chip = document.createElement('span');
+    chip.className = 'folder-chip';
+    chip.innerHTML = `<span>${f.name}</span>`;
+    chip.addEventListener('click', () => {
+      $('#driveFolderIdInput').value = f.id;
+      $('#driveListBtn').click();
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      saveFolderHistory(loadFolderHistory().filter((x) => x.id !== f.id));
+      renderFolderHistory();
+    });
+    chip.appendChild(removeBtn);
+    el.appendChild(chip);
+  });
+}
+renderFolderHistory();
+
 $('#driveListBtn').addEventListener('click', async () => {
   const folderId = $('#driveFolderIdInput').value.trim();
   if (!folderId) { toast('フォルダIDを入力してください'); return; }
@@ -274,6 +320,7 @@ $('#driveListBtn').addEventListener('click', async () => {
       row.appendChild(btn);
       listEl.appendChild(row);
     });
+    rememberFolder(folderId);
   } catch (e) {
     listEl.textContent = '';
     toast(e.message);
