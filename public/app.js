@@ -74,6 +74,7 @@ function formatOutput(fileName, segments, format) {
 
 // ==================== ファイル選択 ====================
 let currentFile = null;
+let currentDriveFileId = null; // Drive由来の音声を選んでいる場合のfileId(文字起こし完了後に履歴を残すため)
 const dropzone = $('#dropzone');
 const fileInput = $('#fileInput');
 dropzone.addEventListener('click', () => fileInput.click());
@@ -85,14 +86,16 @@ dropzone.addEventListener('drop', (e) => {
   if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
-function setFile(file) {
+function setFile(file, driveFileId) {
   currentFile = file;
+  currentDriveFileId = driveFileId || null;
   $('#fileChip').style.display = 'flex';
   $('#fileChipName').textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`;
   $('#urlInput').value = '';
 }
 $('#fileChipClear').addEventListener('click', () => {
   currentFile = null;
+  currentDriveFileId = null;
   fileInput.value = '';
   $('#fileChip').style.display = 'none';
 });
@@ -306,6 +309,25 @@ $('#startBtn').addEventListener('click', async () => {
     const outputText = formatOutput(fileName, allSegments, format);
     $('#resultText').value = outputText;
     $('#resultCard').style.display = 'block';
+
+    if (currentDriveFileId) {
+      try {
+        await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName,
+            sourceType: 'drive',
+            sourceKey: `drive:${currentDriveFileId}`,
+            outputFormat: format,
+            mode: 'transcript',
+            fullText: outputText,
+          }),
+        });
+        if ($('#driveFileList').children.length) $('#driveListBtn').click();
+      } catch (e) { /* 履歴保存に失敗してもUIはブロックしない */ }
+    }
+
     logLine('完了しました');
     toast('文字起こしが完了しました');
   } catch (e) {
@@ -420,17 +442,76 @@ $('#driveListBtn').addEventListener('click', async () => {
     data.files.forEach((f) => {
       const row = document.createElement('div');
       row.className = 'drive-file';
-      row.innerHTML = `<span class="name">${f.name}</span>`;
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-sm';
-      if (AUDIO_EXT.test(f.name)) {
-        btn.textContent = '文字起こしに使う';
-        btn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
-      } else {
-        btn.textContent = '読み込む';
-        btn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'name';
+      if (f.processed) {
+        const b = document.createElement('span');
+        b.className = 'badge ok';
+        b.textContent = '✓済';
+        nameEl.appendChild(b);
       }
-      row.appendChild(btn);
+      if (f.summarized) {
+        const b = document.createElement('span');
+        b.className = 'badge summarized';
+        b.textContent = '要約済';
+        nameEl.appendChild(b);
+      }
+      nameEl.appendChild(document.createTextNode(f.name));
+      row.appendChild(nameEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'drive-file-actions';
+      const isAudio = AUDIO_EXT.test(f.name);
+
+      const mainBtn = document.createElement('button');
+      mainBtn.className = 'btn btn-sm';
+      if (isAudio) {
+        mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こしに使う';
+        mainBtn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
+      } else {
+        mainBtn.textContent = '読み込む';
+        mainBtn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+      }
+      actions.appendChild(mainBtn);
+
+      if (f.historyId) {
+        const sumBtn = document.createElement('button');
+        sumBtn.className = 'btn btn-sm';
+        sumBtn.textContent = '要約に進む';
+        sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name));
+        actions.appendChild(sumBtn);
+      }
+
+      const moreOptions = [];
+      if (f.summarized) moreOptions.push(['save-summary', `要約をドライブに保存${f.summarySavedToDrive ? '(保存済み)' : ''}`]);
+      if (f.historyId) {
+        moreOptions.push(['article', 'note記事を提案']);
+        moreOptions.push(['social-x', 'X用投稿を生成']);
+        moreOptions.push(['social-instagram', 'Insta用投稿を生成']);
+      }
+      if (moreOptions.length) {
+        const select = document.createElement('select');
+        select.className = 'btn btn-sm more-actions-select';
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'その他 ▾';
+        select.appendChild(defaultOpt);
+        moreOptions.forEach(([value, label]) => {
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = label;
+          select.appendChild(opt);
+        });
+        select.addEventListener('change', () => {
+          const value = select.value;
+          select.value = '';
+          if (value) handleDriveMoreAction(value, f);
+        });
+        actions.appendChild(select);
+      }
+
+      row.appendChild(actions);
       listEl.appendChild(row);
     });
     rememberFolder(folderId);
@@ -450,7 +531,7 @@ async function loadDriveFileAsAudio(fileId, fileName, mimeType) {
     }
     const blob = await res.blob();
     const file = new File([blob], fileName, { type: mimeType || blob.type || 'application/octet-stream' });
-    setFile(file);
+    setFile(file, fileId);
     toast(`「${fileName}」を選択しました。「文字起こしを開始」を押してください`);
   } catch (e) {
     toast(e.message);
@@ -465,6 +546,99 @@ async function loadDriveFileText(fileId, fileName) {
     $('#resultText').value = data.content;
     $('#resultCard').style.display = 'block';
     toast(`「${fileName}」を読み込みました`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+// ==================== 要約・note記事・SNS投稿生成(Groqチャット補完) ====================
+async function fetchHistory(historyId) {
+  const res = await fetch(`/api/history/${encodeURIComponent(historyId)}`);
+  if (!res.ok) throw new Error('履歴の取得に失敗しました');
+  return res.json();
+}
+
+async function postChatWithRetry(promptType, content) {
+  const groqKey = localStorage.getItem(GROQ_KEY_STORAGE);
+  if (!groqKey) throw new Error('Groq APIキーを入力してください');
+  for (let attempt = 0; attempt <= 4; attempt++) {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-groq-key': groqKey },
+      body: JSON.stringify({ promptType, content }),
+    });
+    if (res.status === 429) {
+      const data = await res.json().catch(() => ({}));
+      const waitMs = parseRetryAfterMs(data.error?.message || '') || 15000;
+      toast(`レート制限のため${Math.ceil(waitMs / 1000)}秒待って再試行します`);
+      await sleep(waitMs);
+      continue;
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.text;
+  }
+  throw new Error('リトライ上限に達しました');
+}
+
+async function summarizeHistory(historyId, fileName) {
+  try {
+    toast(`「${fileName}」を要約中…`);
+    const row = await fetchHistory(historyId);
+    const summary = await postChatWithRetry('summarize', row.full_text);
+    await fetch(`/api/history/${encodeURIComponent(historyId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary }),
+    });
+    $('#resultText').value = summary;
+    $('#resultCard').style.display = 'block';
+    toast('要約が完了しました');
+    if ($('#driveFileList').children.length) $('#driveListBtn').click();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function handleDriveMoreAction(action, f) {
+  try {
+    if (action === 'save-summary') {
+      const row = await fetchHistory(f.historyId);
+      if (!row.summary) throw new Error('先に要約を実行してください');
+      const res = await fetch('/api/drive/upload-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: `${f.name}_要約.txt`, content: row.summary, target: 'summary', historyId: f.historyId }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      toast('要約をDriveに保存しました');
+      if ($('#driveFileList').children.length) $('#driveListBtn').click();
+      return;
+    }
+
+    const row = await fetchHistory(f.historyId);
+    if (!row.summary) throw new Error('先に「要約に進む」を実行してください');
+
+    if (action === 'article') {
+      toast('note記事の企画案を生成中…');
+      const text = await postChatWithRetry('article-propose', row.summary);
+      $('#resultText').value = text;
+      $('#resultCard').style.display = 'block';
+      toast('note記事の企画案を生成しました(結果欄を確認してください)');
+      return;
+    }
+    if (action === 'social-x' || action === 'social-instagram') {
+      toast(`${action === 'social-x' ? 'X' : 'Instagram'}用投稿を生成中…`);
+      const text = await postChatWithRetry(action, row.summary);
+      $('#resultText').value = text;
+      $('#resultCard').style.display = 'block';
+      toast('投稿文を生成しました(結果欄を確認してください)');
+      return;
+    }
   } catch (e) {
     toast(e.message);
   }
