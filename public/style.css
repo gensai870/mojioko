@@ -24,12 +24,61 @@ body {
 
 .app-header {
   flex-shrink: 0;
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
 }
-.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-shrink: 0; }
 .logo { font-size: 22px; font-weight: 700; color: var(--accent); }
 .tagline { font-size: 13px; color: var(--text-dim); }
+
+.header-usage {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.usage-chip { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-shrink: 0; }
+.usage-chip-label { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+.usage-chip-value { font-family: monospace; color: var(--accent-hover); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-chip .mini-bar { width: 80px; display: block; }
+
+.bar {
+  height: 5px;
+  border-radius: 999px;
+  background: #12141a;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width .3s;
+}
+
+.status-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: #12141a;
+  border: 1px solid var(--border);
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+.dot.on { background: var(--success); box-shadow: 0 0 0 3px rgba(76, 175, 125, 0.25); }
+.dot.off { background: var(--danger); box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.25); }
 
 main {
   max-width: 720px;

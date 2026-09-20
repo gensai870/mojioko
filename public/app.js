@@ -24,6 +24,7 @@ const GROQ_KEY_STORAGE = 'mojioko:groqApiKey';
 $('#groqKeyInput').value = localStorage.getItem(GROQ_KEY_STORAGE) || '';
 $('#groqKeyInput').addEventListener('change', () => {
   localStorage.setItem(GROQ_KEY_STORAGE, $('#groqKeyInput').value.trim());
+  updateGroqDot();
 });
 
 // ==================== 429レート制限の解析(services/rateLimitUtil.js を移植) ====================
@@ -119,10 +120,112 @@ async function postWhisperWithRetry(body, headers, onWait) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error?.message || `HTTP ${res.status}`);
     }
+    recordGroqRateHeaders(res.headers);
     return res;
   }
   throw new Error('リトライ上限に達しました');
 }
+
+// ==================== 使用量メーター(このブラウザ=このGroqキー分のみ、localStorageで追跡) ====================
+// ローカル版はチーム共有の単一Groqキーだったためサーバー側で集計していたが、
+// Web版は各自が自分のキーを使うので、追跡もブラウザごと(localStorage)で完結させる。
+const USAGE_STORAGE = 'mojioko:usage';
+const RATE_LIMIT_SECONDS_PER_HOUR = 7200; // Groq Freeプラン目安(120分/時)
+const RATE_LIMIT_SECONDS_PER_DAY = 28800; // Groq Freeプラン目安(480分/日)
+
+function utcHourBucket(d) { return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}${String(d.getUTCHours()).padStart(2, '0')}`; }
+function utcDayBucket(d) { return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`; }
+function nextUtcHour(d) { const n = new Date(d); n.setUTCMinutes(0, 0, 0); n.setUTCHours(n.getUTCHours() + 1); return n; }
+function nextUtcMidnight(d) { const n = new Date(d); n.setUTCHours(0, 0, 0, 0); n.setUTCDate(n.getUTCDate() + 1); return n; }
+
+function loadUsage() {
+  let u;
+  try { u = JSON.parse(localStorage.getItem(USAGE_STORAGE) || '{}'); } catch (e) { u = {}; }
+  const now = new Date();
+  const hourBucket = utcHourBucket(now);
+  const dayBucket = utcDayBucket(now);
+  if (u.hourBucket !== hourBucket) { u.hourBucket = hourBucket; u.hourSeconds = 0; }
+  if (u.dayBucket !== dayBucket) { u.dayBucket = dayBucket; u.daySeconds = 0; }
+  u.hourSeconds = u.hourSeconds || 0;
+  u.daySeconds = u.daySeconds || 0;
+  return u;
+}
+function saveUsage(u) { localStorage.setItem(USAGE_STORAGE, JSON.stringify(u)); }
+
+function addProcessedSeconds(sec) {
+  if (!sec || sec <= 0) return;
+  const u = loadUsage();
+  u.hourSeconds += sec;
+  u.daySeconds += sec;
+  saveUsage(u);
+}
+
+// Groqの "55m41s" / "45.2s" 形式の残り時間文字列を秒数に変換する
+function parseGroqDurationSeconds(str) {
+  if (!str) return null;
+  const m = String(str).match(/^(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?$/);
+  if (!m) return null;
+  const h = parseFloat(m[1] || 0), mi = parseFloat(m[2] || 0), s = parseFloat(m[3] || 0);
+  return h * 3600 + mi * 60 + s;
+}
+
+function recordGroqRateHeaders(resHeaders) {
+  const limit = resHeaders.get('x-ratelimit-limit-audio-seconds');
+  const remaining = resHeaders.get('x-ratelimit-remaining-audio-seconds');
+  if (limit === null || remaining === null) return;
+  const resetSec = parseGroqDurationSeconds(resHeaders.get('x-ratelimit-reset-audio-seconds'));
+  const u = loadUsage();
+  u.groqHour = {
+    limit: parseFloat(limit),
+    remaining: parseFloat(remaining),
+    resetAt: resetSec !== null ? Date.now() + resetSec * 1000 : null,
+    fetchedAt: Date.now(),
+  };
+  saveUsage(u);
+  refreshUsageUI();
+}
+
+function fmtUsageSeconds(sec) {
+  sec = Math.max(0, Math.round(sec));
+  return sec < 60 ? `${sec}s` : `${Math.round(sec / 60)}m`;
+}
+
+function refreshUsageUI() {
+  const u = loadUsage();
+  const now = new Date();
+
+  let hourRemaining, hourPercent, hourResetLabel, hourSourceLabel;
+  const snapshot = u.groqHour;
+  const snapshotFresh = snapshot && (!snapshot.resetAt || snapshot.resetAt > Date.now());
+  if (snapshotFresh) {
+    hourRemaining = snapshot.remaining;
+    hourPercent = Math.min(100, Math.max(0, ((snapshot.limit - snapshot.remaining) / snapshot.limit) * 100));
+    hourSourceLabel = '(Groq実測)';
+    hourResetLabel = snapshot.resetAt ? new Date(snapshot.resetAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '';
+  } else {
+    hourRemaining = Math.max(0, RATE_LIMIT_SECONDS_PER_HOUR - u.hourSeconds);
+    hourPercent = Math.min(100, (u.hourSeconds / RATE_LIMIT_SECONDS_PER_HOUR) * 100);
+    hourSourceLabel = '(目安)';
+    hourResetLabel = nextUtcHour(now).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  }
+  $('#usageHourTextMini').textContent = `残り ${fmtUsageSeconds(hourRemaining)} ${hourSourceLabel}${hourResetLabel ? ` ・ ${hourResetLabel}リセット` : ''}`;
+  $('#usageHourFillMini').style.width = hourPercent + '%';
+
+  const dayRemaining = Math.max(0, RATE_LIMIT_SECONDS_PER_DAY - u.daySeconds);
+  const dayPercent = Math.min(100, (u.daySeconds / RATE_LIMIT_SECONDS_PER_DAY) * 100);
+  $('#usageDayTextMini').textContent = `残り ${fmtUsageSeconds(dayRemaining)} (目安)`;
+  $('#usageDayFillMini').style.width = dayPercent + '%';
+}
+
+function updateGroqDot() {
+  const hasKey = !!localStorage.getItem(GROQ_KEY_STORAGE);
+  $('#dot-groq').classList.toggle('on', hasKey);
+  $('#dot-groq').classList.toggle('off', !hasKey);
+}
+
+refreshUsageUI();
+updateGroqDot();
+setInterval(() => { refreshUsageUI(); refreshDriveStatus(); }, 20000);
 
 // ==================== 文字起こし本体 ====================
 $('#startBtn').addEventListener('click', async () => {
@@ -176,6 +279,7 @@ $('#startBtn').addEventListener('click', async () => {
         } else if (data.text) {
           allSegments.push({ start: chunks[i].offset, end: chunks[i].offset, text: data.text });
         }
+        addProcessedSeconds((chunks[i].blob.size - 44) / (16000 * 2));
         updateProgress(i + 1, chunks.length);
       }
     } else {
@@ -228,8 +332,11 @@ async function refreshDriveStatus() {
     $('#driveStatusText').textContent = data.connected ? '連携済みです' : '未連携です';
     $('#driveConnectBtn').style.display = data.connected ? 'none' : 'inline-block';
     $('#driveDisconnectBtn').style.display = data.connected ? 'inline-block' : 'none';
+    $('#dot-drive').classList.toggle('on', !!data.connected);
+    $('#dot-drive').classList.toggle('off', !data.connected);
   } catch (e) {
     $('#driveStatusText').textContent = `状態確認に失敗しました: ${e.message}`;
+    $('#dot-drive').classList.add('off');
   }
 }
 refreshDriveStatus();
