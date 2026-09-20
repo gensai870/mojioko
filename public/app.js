@@ -212,6 +212,87 @@ $('#startBtn').addEventListener('click', async () => {
   }
 });
 
+// ==================== Google Drive連携 ====================
+async function refreshDriveStatus() {
+  try {
+    const res = await fetch('/api/drive/status');
+    const data = await res.json();
+    if (!data.configured) {
+      $('#driveStatusText').textContent = 'サーバー側でGoogle連携が未設定です(管理者に確認してください)';
+      $('#driveConnectBtn').disabled = true;
+      return;
+    }
+    if (data.defaultFolderId && !$('#driveFolderIdInput').value) {
+      $('#driveFolderIdInput').value = data.defaultFolderId;
+    }
+    $('#driveStatusText').textContent = data.connected ? '連携済みです' : '未連携です';
+    $('#driveConnectBtn').style.display = data.connected ? 'none' : 'inline-block';
+    $('#driveDisconnectBtn').style.display = data.connected ? 'inline-block' : 'none';
+  } catch (e) {
+    $('#driveStatusText').textContent = `状態確認に失敗しました: ${e.message}`;
+  }
+}
+refreshDriveStatus();
+
+$('#driveConnectBtn').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/drive/auth-url');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    window.open(data.url, '_blank', 'width=520,height=680');
+    toast('連携完了後、このページで「一覧を取得」を押してください');
+  } catch (e) {
+    toast(e.message);
+  }
+});
+
+$('#driveDisconnectBtn').addEventListener('click', async () => {
+  await fetch('/api/drive/disconnect', { method: 'POST' });
+  toast('連携を解除しました');
+  refreshDriveStatus();
+});
+
+$('#driveListBtn').addEventListener('click', async () => {
+  const folderId = $('#driveFolderIdInput').value.trim();
+  if (!folderId) { toast('フォルダIDを入力してください'); return; }
+  const listEl = $('#driveFileList');
+  listEl.textContent = '取得中…';
+  try {
+    const res = await fetch(`/api/drive/list?folderId=${encodeURIComponent(folderId)}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    listEl.innerHTML = '';
+    if (!data.files.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
+    data.files.forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'drive-file';
+      row.innerHTML = `<span class="name">${f.name}</span>`;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = '読み込む';
+      btn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+      row.appendChild(btn);
+      listEl.appendChild(row);
+    });
+  } catch (e) {
+    listEl.textContent = '';
+    toast(e.message);
+  }
+});
+
+async function loadDriveFileText(fileId, fileName) {
+  try {
+    const res = await fetch(`/api/drive/text?fileId=${encodeURIComponent(fileId)}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    $('#resultText').value = data.content;
+    $('#resultCard').style.display = 'block';
+    toast(`「${fileName}」を読み込みました`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 $('#copyResultBtn').addEventListener('click', () => {
   navigator.clipboard.writeText($('#resultText').value);
   toast('コピーしました');

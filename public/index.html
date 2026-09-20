@@ -65,6 +65,25 @@
   </div>
 
   <div class="card">
+    <h2>④ Google Driveから読み込む</h2>
+    <p class="help-text" id="driveStatusText">状態を確認中…</p>
+    <div class="btn-row">
+      <button class="btn btn-sm" id="driveConnectBtn">Driveと連携</button>
+      <button class="btn btn-sm" id="driveDisconnectBtn" style="display:none;">連携解除</button>
+    </div>
+    <div class="field-row" style="margin-top:12px;">
+      <div class="field">
+        <label>フォルダID</label>
+        <input type="text" id="driveFolderIdInput" placeholder="フォルダIDを入力">
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-sm" id="driveListBtn">一覧を取得</button>
+    </div>
+    <div id="driveFileList" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
     <div class="btn-row">
       <button class="btn btn-primary" id="startBtn">文字起こしを開始</button>
     </div>
