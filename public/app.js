@@ -309,14 +309,20 @@ $('#driveListBtn').addEventListener('click', async () => {
     if (data.error) throw new Error(data.error.message);
     listEl.innerHTML = '';
     if (!data.files.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
+    const AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
     data.files.forEach((f) => {
       const row = document.createElement('div');
       row.className = 'drive-file';
       row.innerHTML = `<span class="name">${f.name}</span>`;
       const btn = document.createElement('button');
       btn.className = 'btn btn-sm';
-      btn.textContent = '読み込む';
-      btn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+      if (AUDIO_EXT.test(f.name)) {
+        btn.textContent = '文字起こしに使う';
+        btn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
+      } else {
+        btn.textContent = '読み込む';
+        btn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+      }
       row.appendChild(btn);
       listEl.appendChild(row);
     });
@@ -326,6 +332,23 @@ $('#driveListBtn').addEventListener('click', async () => {
     toast(e.message);
   }
 });
+
+async function loadDriveFileAsAudio(fileId, fileName, mimeType) {
+  try {
+    toast(`「${fileName}」をDriveから取得中…`);
+    const res = await fetch(`/api/drive/download?fileId=${encodeURIComponent(fileId)}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error?.message || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const file = new File([blob], fileName, { type: mimeType || blob.type || 'application/octet-stream' });
+    setFile(file);
+    toast(`「${fileName}」を選択しました。「文字起こしを開始」を押してください`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
 
 async function loadDriveFileText(fileId, fileName) {
   try {
