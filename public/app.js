@@ -467,7 +467,7 @@ $('#driveListBtn').addEventListener('click', async () => {
       const mainBtn = document.createElement('button');
       mainBtn.className = 'btn btn-sm';
       if (isAudio) {
-        mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こしに使う';
+        mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こし';
         mainBtn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
       } else {
         mainBtn.textContent = '読み込む';
@@ -532,7 +532,7 @@ async function loadDriveFileAsAudio(fileId, fileName, mimeType) {
     const blob = await res.blob();
     const file = new File([blob], fileName, { type: mimeType || blob.type || 'application/octet-stream' });
     setFile(file, fileId);
-    toast(`「${fileName}」を選択しました。「文字起こしを開始」を押してください`);
+    $('#startBtn').click();
   } catch (e) {
     toast(e.message);
   }
