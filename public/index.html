@@ -107,6 +107,16 @@
       <button class="btn btn-sm" id="driveListBtn">一覧を取得</button>
     </div>
     <div id="driveFolderHistory" style="margin-top:10px;"></div>
+    <div class="field-row drive-sort-row" style="margin-top:12px;">
+      <div class="field">
+        <label>並び替え</label>
+        <select id="driveSortField">
+          <option value="name">タイトル順</option>
+          <option value="modifiedTime">アップロード日順</option>
+        </select>
+      </div>
+      <button class="btn btn-sm" id="driveSortDirBtn" title="昇順/降順を切り替え">▲ 昇順</button>
+    </div>
     <div id="driveFileList" style="margin-top:12px;"></div>
   </div>
 

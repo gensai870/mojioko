@@ -427,6 +427,111 @@ function renderFolderHistory() {
 }
 renderFolderHistory();
 
+const DRIVE_AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
+let currentDriveFiles = [];
+let driveSortDir = 1; // 1 = 昇順, -1 = 降順
+
+function renderDriveRow(f) {
+  const row = document.createElement('div');
+  row.className = 'drive-file';
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'name';
+  if (f.processed) {
+    const b = document.createElement('span');
+    b.className = 'badge ok';
+    b.textContent = '✓済';
+    nameEl.appendChild(b);
+  }
+  if (f.summarized) {
+    const b = document.createElement('span');
+    b.className = 'badge summarized';
+    b.textContent = '要約済';
+    nameEl.appendChild(b);
+  }
+  nameEl.appendChild(document.createTextNode(f.name));
+  row.appendChild(nameEl);
+
+  const actions = document.createElement('div');
+  actions.className = 'drive-file-actions';
+  const isAudio = DRIVE_AUDIO_EXT.test(f.name);
+
+  const mainBtn = document.createElement('button');
+  mainBtn.className = 'btn btn-sm';
+  if (isAudio) {
+    mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こし';
+    mainBtn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
+  } else {
+    mainBtn.textContent = '読み込む';
+    mainBtn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
+  }
+  actions.appendChild(mainBtn);
+
+  if (f.historyId) {
+    const sumBtn = document.createElement('button');
+    sumBtn.className = 'btn btn-sm';
+    sumBtn.textContent = '要約に進む';
+    sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name));
+    actions.appendChild(sumBtn);
+  }
+
+  const moreOptions = [];
+  if (f.summarized) moreOptions.push(['save-summary', `要約をドライブに保存${f.summarySavedToDrive ? '(保存済み)' : ''}`]);
+  if (f.historyId) {
+    moreOptions.push(['article', 'note記事を提案']);
+    moreOptions.push(['social-x', 'X用投稿を生成']);
+    moreOptions.push(['social-instagram', 'Insta用投稿を生成']);
+  }
+  if (moreOptions.length) {
+    const select = document.createElement('select');
+    select.className = 'btn btn-sm more-actions-select';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'その他 ▾';
+    select.appendChild(defaultOpt);
+    moreOptions.forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', () => {
+      const value = select.value;
+      select.value = '';
+      if (value) handleDriveMoreAction(value, f);
+    });
+    actions.appendChild(select);
+  }
+
+  row.appendChild(actions);
+  return row;
+}
+
+function renderDriveFileList() {
+  const listEl = $('#driveFileList');
+  listEl.innerHTML = '';
+  if (!currentDriveFiles.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
+
+  const field = $('#driveSortField').value;
+  const sorted = [...currentDriveFiles].sort((a, b) => {
+    let cmp;
+    if (field === 'modifiedTime') {
+      cmp = new Date(a.modifiedTime || 0) - new Date(b.modifiedTime || 0);
+    } else {
+      cmp = a.name.localeCompare(b.name, 'ja');
+    }
+    return cmp * driveSortDir;
+  });
+  sorted.forEach((f) => listEl.appendChild(renderDriveRow(f)));
+}
+
+$('#driveSortField').addEventListener('change', renderDriveFileList);
+$('#driveSortDirBtn').addEventListener('click', () => {
+  driveSortDir *= -1;
+  $('#driveSortDirBtn').textContent = driveSortDir === 1 ? '▲ 昇順' : '▼ 降順';
+  renderDriveFileList();
+});
+
 $('#driveListBtn').addEventListener('click', async () => {
   const folderId = $('#driveFolderIdInput').value.trim();
   if (!folderId) { toast('フォルダIDを入力してください'); return; }
@@ -436,84 +541,8 @@ $('#driveListBtn').addEventListener('click', async () => {
     const res = await fetch(`/api/drive/list?folderId=${encodeURIComponent(folderId)}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    listEl.innerHTML = '';
-    if (!data.files.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
-    const AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
-    data.files.forEach((f) => {
-      const row = document.createElement('div');
-      row.className = 'drive-file';
-
-      const nameEl = document.createElement('span');
-      nameEl.className = 'name';
-      if (f.processed) {
-        const b = document.createElement('span');
-        b.className = 'badge ok';
-        b.textContent = '✓済';
-        nameEl.appendChild(b);
-      }
-      if (f.summarized) {
-        const b = document.createElement('span');
-        b.className = 'badge summarized';
-        b.textContent = '要約済';
-        nameEl.appendChild(b);
-      }
-      nameEl.appendChild(document.createTextNode(f.name));
-      row.appendChild(nameEl);
-
-      const actions = document.createElement('div');
-      actions.className = 'drive-file-actions';
-      const isAudio = AUDIO_EXT.test(f.name);
-
-      const mainBtn = document.createElement('button');
-      mainBtn.className = 'btn btn-sm';
-      if (isAudio) {
-        mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こし';
-        mainBtn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
-      } else {
-        mainBtn.textContent = '読み込む';
-        mainBtn.addEventListener('click', () => loadDriveFileText(f.id, f.name));
-      }
-      actions.appendChild(mainBtn);
-
-      if (f.historyId) {
-        const sumBtn = document.createElement('button');
-        sumBtn.className = 'btn btn-sm';
-        sumBtn.textContent = '要約に進む';
-        sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name));
-        actions.appendChild(sumBtn);
-      }
-
-      const moreOptions = [];
-      if (f.summarized) moreOptions.push(['save-summary', `要約をドライブに保存${f.summarySavedToDrive ? '(保存済み)' : ''}`]);
-      if (f.historyId) {
-        moreOptions.push(['article', 'note記事を提案']);
-        moreOptions.push(['social-x', 'X用投稿を生成']);
-        moreOptions.push(['social-instagram', 'Insta用投稿を生成']);
-      }
-      if (moreOptions.length) {
-        const select = document.createElement('select');
-        select.className = 'btn btn-sm more-actions-select';
-        const defaultOpt = document.createElement('option');
-        defaultOpt.value = '';
-        defaultOpt.textContent = 'その他 ▾';
-        select.appendChild(defaultOpt);
-        moreOptions.forEach(([value, label]) => {
-          const opt = document.createElement('option');
-          opt.value = value;
-          opt.textContent = label;
-          select.appendChild(opt);
-        });
-        select.addEventListener('change', () => {
-          const value = select.value;
-          select.value = '';
-          if (value) handleDriveMoreAction(value, f);
-        });
-        actions.appendChild(select);
-      }
-
-      row.appendChild(actions);
-      listEl.appendChild(row);
-    });
+    currentDriveFiles = data.files;
+    renderDriveFileList();
     rememberFolder(folderId);
   } catch (e) {
     listEl.textContent = '';
