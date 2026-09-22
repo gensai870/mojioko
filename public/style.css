@@ -225,7 +225,17 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
   margin-bottom: 8px;
   font-size: 13px;
 }
-.drive-file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 120px; }
+.drive-file-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 120px; }
+.drive-file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-file-status {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drive-file-status.err { color: var(--danger); }
 .drive-file-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .badge {

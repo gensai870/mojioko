@@ -17,6 +17,9 @@ function logLine(message, isError) {
   line.innerHTML = `<span class="ts">${ts}</span> ${message}`;
   term.appendChild(line);
   term.scrollTop = term.scrollHeight;
+
+  // Driveから文字起こし中のファイルは、一覧までスクロールしなくて済むよう該当行にも同じ状況を表示する
+  if (currentDriveFileId) setDriveRowStatus(currentDriveFileId, message, isError);
 }
 
 // ==================== Groqキー(localStorageのみ、サーバーには保存しない) ====================
@@ -430,10 +433,22 @@ renderFolderHistory();
 const DRIVE_AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
 let currentDriveFiles = [];
 let driveSortDir = 1; // 1 = 昇順, -1 = 降順
+const driveRowStatusEls = new Map(); // fileId -> 行内ステータス表示要素
+
+function setDriveRowStatus(fileId, message, isError) {
+  const el = driveRowStatusEls.get(fileId);
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('err', !!isError);
+  el.style.display = 'block';
+}
 
 function renderDriveRow(f) {
   const row = document.createElement('div');
   row.className = 'drive-file';
+
+  const info = document.createElement('div');
+  info.className = 'drive-file-info';
 
   const nameEl = document.createElement('span');
   nameEl.className = 'name';
@@ -450,7 +465,15 @@ function renderDriveRow(f) {
     nameEl.appendChild(b);
   }
   nameEl.appendChild(document.createTextNode(f.name));
-  row.appendChild(nameEl);
+  info.appendChild(nameEl);
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'drive-file-status';
+  statusEl.style.display = 'none';
+  info.appendChild(statusEl);
+  driveRowStatusEls.set(f.id, statusEl);
+
+  row.appendChild(info);
 
   const actions = document.createElement('div');
   actions.className = 'drive-file-actions';
@@ -510,6 +533,7 @@ function renderDriveRow(f) {
 function renderDriveFileList() {
   const listEl = $('#driveFileList');
   listEl.innerHTML = '';
+  driveRowStatusEls.clear();
   if (!currentDriveFiles.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
 
   const field = $('#driveSortField').value;
