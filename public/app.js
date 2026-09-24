@@ -30,6 +30,16 @@ $('#groqKeyInput').addEventListener('change', () => {
   updateGroqDot();
 });
 
+// ==================== Drive自動保存チェックボックス(localStorageに設定を記憶) ====================
+const AUTO_SAVE_DRIVE_STORAGE = 'mojioko:autoSaveDrive';
+{
+  const saved = localStorage.getItem(AUTO_SAVE_DRIVE_STORAGE);
+  $('#autoSaveDriveCheckbox').checked = saved === null ? true : saved === 'true';
+}
+$('#autoSaveDriveCheckbox').addEventListener('change', () => {
+  localStorage.setItem(AUTO_SAVE_DRIVE_STORAGE, $('#autoSaveDriveCheckbox').checked);
+});
+
 // ==================== 429レート制限の解析(services/rateLimitUtil.js を移植) ====================
 function parseRetryAfterMs(message) {
   if (!message) return null;
@@ -73,6 +83,18 @@ function formatOutput(fileName, segments, format) {
   if (format === 'vtt') return 'WEBVTT\n\n' + segments.map((s) => `${secToVttTime(s.start)} --> ${secToVttTime(s.end)}\n${s.text.trim()}\n`).join('\n');
   if (format === 'json') return JSON.stringify({ meta: { fileName, dateTime: extractDateTimeFromFileName(fileName) }, segments }, null, 2);
   return header + segments.map((s) => s.text.trim()).join('\n');
+}
+
+function extFromFormat(format) {
+  if (format === 'json') return 'json';
+  if (format === 'srt') return 'srt';
+  if (format === 'vtt') return 'vtt';
+  return 'txt';
+}
+
+function safeFileBaseName(fileName) {
+  const base = (fileName || 'transcript').replace(/\.[^/.]+$/, '');
+  return base.replace(/[\\/:*?"<>|]/g, '_');
 }
 
 // ==================== ファイル選択 ====================
@@ -313,23 +335,46 @@ $('#startBtn').addEventListener('click', async () => {
     $('#resultText').value = outputText;
     $('#resultCard').style.display = 'block';
 
-    if (currentDriveFileId) {
-      try {
-        await fetch('/api/history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName,
-            sourceType: 'drive',
-            sourceKey: `drive:${currentDriveFileId}`,
-            outputFormat: format,
-            mode: 'transcript',
-            fullText: outputText,
-          }),
-        });
-        if ($('#driveFileList').children.length) $('#driveListBtn').click();
-      } catch (e) { /* 履歴保存に失敗してもUIはブロックしない */ }
-    }
+    try {
+      const sourceType = currentDriveFileId ? 'drive' : (url && !currentFile ? 'url' : 'file');
+      const historyRes = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName,
+          sourceType,
+          sourceKey: currentDriveFileId ? `drive:${currentDriveFileId}` : null,
+          outputFormat: format,
+          mode: 'transcript',
+          fullText: outputText,
+        }),
+      });
+      const historyData = await historyRes.json();
+
+      if ($('#autoSaveDriveCheckbox').checked && historyData.id) {
+        try {
+          logLine('Google Driveに保存しています…');
+          const outFileName = `${safeFileBaseName(fileName)}.${extFromFormat(format)}`;
+          const uploadRes = await fetch('/api/drive/upload-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName: outFileName, content: outputText }),
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.error) throw new Error(uploadData.error.message);
+          await fetch(`/api/history/${encodeURIComponent(historyData.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ drive_saved: 1 }),
+          });
+          logLine('Google Driveへの保存が完了しました');
+        } catch (e) {
+          logLine(`Drive保存に失敗しました: ${e.message}`, true);
+        }
+      }
+
+      if (currentDriveFileId && $('#driveFileList').children.length) $('#driveListBtn').click();
+    } catch (e) { /* 履歴保存に失敗してもUIはブロックしない */ }
 
     logLine('完了しました');
     toast('文字起こしが完了しました');

@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: { message: 'INVALID_JSON' } });
       }
 
-      const allowed = ['summary', 'article', 'genre', 'summary_drive_saved'];
+      const allowed = ['summary', 'article', 'genre', 'summary_drive_saved', 'drive_saved'];
       const sets = [];
       const values = [];
       for (const key of allowed) {
