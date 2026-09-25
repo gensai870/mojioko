@@ -544,6 +544,12 @@ function renderDriveRow(f) {
     sumBtn.textContent = '要約に進む';
     sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name));
     actions.appendChild(sumBtn);
+
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'btn btn-sm';
+    dlBtn.textContent = 'ダウンロード';
+    dlBtn.addEventListener('click', () => downloadHistoryText(f.historyId, f.name));
+    actions.appendChild(dlBtn);
   }
 
   const moreOptions = [];
@@ -657,6 +663,21 @@ async function fetchHistory(historyId) {
   const res = await fetch(`/api/history/${encodeURIComponent(historyId)}`);
   if (!res.ok) throw new Error('履歴の取得に失敗しました');
   return res.json();
+}
+
+async function downloadHistoryText(historyId, fileName) {
+  try {
+    const row = await fetchHistory(historyId);
+    const outFileName = `${safeFileBaseName(fileName)}.${extFromFormat(row.output_format)}`;
+    const blob = new Blob([row.full_text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = outFileName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 async function postChatWithRetry(promptType, content) {
