@@ -351,7 +351,8 @@ $('#startBtn').addEventListener('click', async () => {
       });
       const historyData = await historyRes.json();
 
-      if ($('#autoSaveDriveCheckbox').checked && historyData.id) {
+      const autoSaveCheckbox = $('#autoSaveDriveCheckbox');
+      if (autoSaveCheckbox && autoSaveCheckbox.checked && historyData.id) {
         try {
           logLine('Google Driveに保存しています…');
           const outFileName = `${safeFileBaseName(fileName)}.${extFromFormat(format)}`;
@@ -374,7 +375,9 @@ $('#startBtn').addEventListener('click', async () => {
       }
 
       if (currentDriveFileId && $('#driveFileList').children.length) $('#driveListBtn').click();
-    } catch (e) { /* 履歴保存に失敗してもUIはブロックしない */ }
+    } catch (e) {
+      logLine(`履歴の保存に失敗しました: ${e.message}`, true);
+    }
 
     logLine('完了しました');
     toast('文字起こしが完了しました');
