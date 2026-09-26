@@ -125,17 +125,30 @@ $('#fileChipClear').addEventListener('click', () => {
   $('#fileChip').style.display = 'none';
 });
 
-// ==================== Whisper呼び出し(429は自動で待って再送する) ====================
+// ==================== Whisper呼び出し(429・一時的な通信断は自動で待って再送する) ====================
 async function postWhisperWithRetry(body, headers, onWait) {
   const groqKey = localStorage.getItem(GROQ_KEY_STORAGE);
   if (!groqKey) throw new Error('Groq APIキーを入力してください');
 
+  let networkRetries = 0;
   for (let attempt = 0; attempt <= 6; attempt++) {
-    const res = await fetch('/api/whisper', {
-      method: 'POST',
-      headers: { ...(headers || {}), 'x-groq-key': groqKey },
-      body,
-    });
+    let res;
+    try {
+      res = await fetch('/api/whisper', {
+        method: 'POST',
+        headers: { ...(headers || {}), 'x-groq-key': groqKey },
+        body,
+      });
+    } catch (e) {
+      // 一時的な通信断(Failed to fetch等)。429と違いGroq側の情報が無いので固定間隔で数回だけ再送する
+      networkRetries++;
+      if (networkRetries > 5) throw new Error(`通信エラーが続いたため中断しました: ${e.message}`);
+      const waitMs = 5000;
+      if (onWait) onWait(waitMs, `通信エラー(${e.message})のため再試行します`);
+      await sleep(waitMs);
+      attempt--; // 通信エラーは429と別カウントにする(429の再試行回数を消費しない)
+      continue;
+    }
     if (res.status === 429) {
       const data = await res.json().catch(() => ({}));
       const message = data.error?.message || 'レート制限に達しました';
@@ -683,12 +696,23 @@ async function downloadHistoryText(historyId, fileName) {
 async function postChatWithRetry(promptType, content) {
   const groqKey = localStorage.getItem(GROQ_KEY_STORAGE);
   if (!groqKey) throw new Error('Groq APIキーを入力してください');
+  let networkRetries = 0;
   for (let attempt = 0; attempt <= 4; attempt++) {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-groq-key': groqKey },
-      body: JSON.stringify({ promptType, content }),
-    });
+    let res;
+    try {
+      res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-groq-key': groqKey },
+        body: JSON.stringify({ promptType, content }),
+      });
+    } catch (e) {
+      networkRetries++;
+      if (networkRetries > 5) throw new Error(`通信エラーが続いたため中断しました: ${e.message}`);
+      toast(`通信エラーのため再試行します(${e.message})`);
+      await sleep(5000);
+      attempt--;
+      continue;
+    }
     if (res.status === 429) {
       const data = await res.json().catch(() => ({}));
       const waitMs = parseRetryAfterMs(data.error?.message || '') || 15000;
