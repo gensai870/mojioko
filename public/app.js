@@ -693,7 +693,33 @@ async function downloadHistoryText(historyId, fileName) {
   }
 }
 
-async function postChatWithRetry(promptType, content) {
+// 日本語のトークン密度を考慮し、既定は小さめのチャンクサイズで分割(ローカル版と同じ考え方)。
+// 段落(改行区切り)単位が基本だが、改行の無い/極端に長い段落も強制的に分割する
+function splitIntoChunks(text, chunkChars = 3500) {
+  const paragraphs = text.split(/\n+/);
+  const chunks = [];
+  let current = '';
+  for (let p of paragraphs) {
+    while (p.length > chunkChars) {
+      if (current) {
+        chunks.push(current);
+        current = '';
+      }
+      chunks.push(p.slice(0, chunkChars));
+      p = p.slice(chunkChars);
+    }
+    if ((current + '\n' + p).length > chunkChars && current) {
+      chunks.push(current);
+      current = p;
+    } else {
+      current = current ? current + '\n' + p : p;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function postChatWithRetry(promptType, content, maxTokens) {
   const groqKey = localStorage.getItem(GROQ_KEY_STORAGE);
   if (!groqKey) throw new Error('Groq APIキーを入力してください');
   let networkRetries = 0;
@@ -703,7 +729,7 @@ async function postChatWithRetry(promptType, content) {
       res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-groq-key': groqKey },
-        body: JSON.stringify({ promptType, content }),
+        body: JSON.stringify({ promptType, content, maxTokens }),
       });
     } catch (e) {
       networkRetries++;
@@ -734,7 +760,26 @@ async function summarizeHistory(historyId, fileName) {
   try {
     toast(`「${fileName}」を要約中…`);
     const row = await fetchHistory(historyId);
-    const summary = await postChatWithRetry('summarize', row.full_text);
+
+    // Groqのチャットモデルは1分あたりのトークン数(TPM)に上限があり、長い文字起こしをそのまま
+    // 1回で送ると「Request too large」で失敗する(429と違い待っても解決しない)。
+    // ローカル版と同様、長い場合はチャンクに分けて部分要約→それらをまとめて最終要約する。
+    const chunks = splitIntoChunks(row.full_text);
+    let summary;
+    if (chunks.length === 1) {
+      summary = await postChatWithRetry('summarize', chunks[0]);
+    } else {
+      toast(`文章が長いため${chunks.length}分割して要約します`);
+      const partials = [];
+      for (let i = 0; i < chunks.length; i++) {
+        toast(`部分要約 ${i + 1}/${chunks.length} を生成中…`);
+        const partial = await postChatWithRetry('summarize-chunk', chunks[i], 800);
+        partials.push(partial);
+      }
+      toast('部分要約をまとめています…');
+      summary = await postChatWithRetry('summarize', partials.join('\n\n---\n\n'));
+    }
+
     await fetch(`/api/history/${encodeURIComponent(historyId)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

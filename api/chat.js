@@ -1,7 +1,7 @@
 // Groqチャット補完のステートレスプロキシ(要約・note記事・SNS投稿生成)。
 // ローカル版のgroqChat.js相当だが、429時にサーバー側でsleepして待つことはしない
 // (Vercel関数のタイムアウトに引っかかるため)。429はそのままクライアントへ返し、待って再送するのはブラウザ側。
-const { SUMMARIZE_PROMPT, PROPOSE_PROMPT, GENERATE_PROMPT, SOCIAL_PROMPTS } = require('../lib/promptTemplates');
+const { SUMMARIZE_PROMPT, CHUNK_PROMPT, PROPOSE_PROMPT, GENERATE_PROMPT, SOCIAL_PROMPTS } = require('../lib/promptTemplates');
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_CHAT_MODEL = process.env.GROQ_CHAT_MODEL || 'openai/gpt-oss-120b';
@@ -10,6 +10,8 @@ function buildMessages(promptType, content) {
   switch (promptType) {
     case 'summarize':
       return [{ role: 'system', content: SUMMARIZE_PROMPT }, { role: 'user', content }];
+    case 'summarize-chunk':
+      return [{ role: 'system', content: CHUNK_PROMPT }, { role: 'user', content }];
     case 'article-propose':
       return [{ role: 'system', content: PROPOSE_PROMPT }, { role: 'user', content: `【要約】\n${content}` }];
     case 'article-generate':
