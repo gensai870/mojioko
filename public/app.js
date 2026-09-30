@@ -555,7 +555,7 @@ function renderDriveRow(f) {
     const sumBtn = document.createElement('button');
     sumBtn.className = 'btn btn-sm';
     sumBtn.textContent = '要約に進む';
-    sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name));
+    sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name, f.id));
     actions.appendChild(sumBtn);
 
     const dlBtn = document.createElement('button');
@@ -756,9 +756,14 @@ async function postChatWithRetry(promptType, content, maxTokens) {
   throw new Error('リトライ上限に達しました');
 }
 
-async function summarizeHistory(historyId, fileName) {
+function summarizeStatus(driveFileId, message, isError) {
+  if (driveFileId) setDriveRowStatus(driveFileId, message, isError);
+  else toast(message);
+}
+
+async function summarizeHistory(historyId, fileName, driveFileId) {
   try {
-    toast(`「${fileName}」を要約中…`);
+    summarizeStatus(driveFileId, `「${fileName}」を要約中…`);
     const row = await fetchHistory(historyId);
 
     // Groqのチャットモデルは1分あたりのトークン数(TPM)に上限があり、長い文字起こしをそのまま
@@ -769,14 +774,14 @@ async function summarizeHistory(historyId, fileName) {
     if (chunks.length === 1) {
       summary = await postChatWithRetry('summarize', chunks[0]);
     } else {
-      toast(`文章が長いため${chunks.length}分割して要約します`);
+      summarizeStatus(driveFileId, `文章が長いため${chunks.length}分割して要約します`);
       const partials = [];
       for (let i = 0; i < chunks.length; i++) {
-        toast(`部分要約 ${i + 1}/${chunks.length} を生成中…`);
+        summarizeStatus(driveFileId, `部分要約 ${i + 1}/${chunks.length} を生成中…`);
         const partial = await postChatWithRetry('summarize-chunk', chunks[i], 800);
         partials.push(partial);
       }
-      toast('部分要約をまとめています…');
+      summarizeStatus(driveFileId, '部分要約をまとめています…');
       summary = await postChatWithRetry('summarize', partials.join('\n\n---\n\n'));
     }
 
@@ -787,9 +792,11 @@ async function summarizeHistory(historyId, fileName) {
     });
     $('#resultText').value = summary;
     $('#resultCard').style.display = 'block';
+    summarizeStatus(driveFileId, '要約が完了しました');
     toast('要約が完了しました');
     if ($('#driveFileList').children.length) $('#driveListBtn').click();
   } catch (e) {
+    summarizeStatus(driveFileId, `エラー: ${e.message}`, true);
     toast(e.message);
   }
 }
