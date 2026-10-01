@@ -124,12 +124,17 @@
     <div id="driveFileList" style="margin-top:12px;"></div>
   </div>
 
-  <div class="card result-box" id="resultCard" style="display:none;">
-    <h2>結果</h2>
-    <textarea id="resultText" readonly></textarea>
-    <div class="btn-row" style="margin-top:12px;">
-      <button class="btn btn-sm" id="copyResultBtn">コピー</button>
-      <button class="btn btn-sm" id="downloadResultBtn">ダウンロード</button>
+  <div class="result-modal-backdrop" id="resultCard" style="display:none;">
+    <div class="result-modal">
+      <div class="result-modal-header">
+        <h2>結果</h2>
+        <button class="result-modal-close" id="resultCloseBtn" aria-label="閉じる">✕</button>
+      </div>
+      <textarea id="resultText" readonly></textarea>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-sm" id="copyResultBtn">コピー</button>
+        <button class="btn btn-sm" id="downloadResultBtn">ダウンロード</button>
+      </div>
     </div>
   </div>
 

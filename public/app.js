@@ -346,7 +346,7 @@ $('#startBtn').addEventListener('click', async () => {
 
     const outputText = formatOutput(fileName, allSegments, format);
     $('#resultText').value = outputText;
-    $('#resultCard').style.display = 'block';
+    $('#resultCard').style.display = 'flex';
 
     try {
       const sourceType = currentDriveFileId ? 'drive' : (url && !currentFile ? 'url' : 'file');
@@ -717,7 +717,7 @@ async function loadDriveFileText(fileId, fileName) {
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
     $('#resultText').value = data.content;
-    $('#resultCard').style.display = 'block';
+    $('#resultCard').style.display = 'flex';
     toast(`「${fileName}」を読み込みました`);
   } catch (e) {
     toast(e.message);
@@ -844,7 +844,7 @@ async function summarizeHistory(historyId, fileName, driveFileId) {
       body: JSON.stringify({ summary }),
     });
     $('#resultText').value = summary;
-    $('#resultCard').style.display = 'block';
+    $('#resultCard').style.display = 'flex';
     summarizeStatus(driveFileId, '要約が完了しました');
     toast('要約が完了しました');
     if ($('#driveFileList').children.length) $('#driveListBtn').click();
@@ -878,7 +878,7 @@ async function handleDriveMoreAction(action, f) {
       toast('note記事の企画案を生成中…');
       const text = await postChatWithRetry('article-propose', row.summary);
       $('#resultText').value = text;
-      $('#resultCard').style.display = 'block';
+      $('#resultCard').style.display = 'flex';
       toast('note記事の企画案を生成しました(結果欄を確認してください)');
       return;
     }
@@ -886,7 +886,7 @@ async function handleDriveMoreAction(action, f) {
       toast(`${action === 'social-x' ? 'X' : 'Instagram'}用投稿を生成中…`);
       const text = await postChatWithRetry(action, row.summary);
       $('#resultText').value = text;
-      $('#resultCard').style.display = 'block';
+      $('#resultCard').style.display = 'flex';
       toast('投稿文を生成しました(結果欄を確認してください)');
       return;
     }
@@ -894,6 +894,10 @@ async function handleDriveMoreAction(action, f) {
     toast(e.message);
   }
 }
+
+$('#resultCloseBtn').addEventListener('click', () => {
+  $('#resultCard').style.display = 'none';
+});
 
 $('#copyResultBtn').addEventListener('click', () => {
   navigator.clipboard.writeText($('#resultText').value);
