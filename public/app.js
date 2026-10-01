@@ -494,14 +494,41 @@ renderFolderHistory();
 const DRIVE_AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
 let currentDriveFiles = [];
 let driveSortDir = 1; // 1 = 昇順, -1 = 降順
-const driveRowStatusEls = new Map(); // fileId -> 行内ステータス表示要素
+const driveRowStatusEls = new Map(); // fileId -> 行内ステータス表示要素(最新1行)
+const driveRowLogEls = new Map(); // fileId -> 詳細ログ表示要素(再描画のたびに作り直す)
+const driveRowLogs = new Map(); // fileId -> ログ履歴の配列(再描画を跨いで保持する)
+
+function renderDriveRowLogPanel(fileId) {
+  const panel = driveRowLogEls.get(fileId);
+  if (!panel) return;
+  const logs = driveRowLogs.get(fileId) || [];
+  panel.innerHTML = '';
+  if (!logs.length) {
+    panel.textContent = 'まだログがありません';
+    return;
+  }
+  logs.forEach((entry) => {
+    const line = document.createElement('div');
+    line.className = 'drive-file-log-line' + (entry.isError ? ' err' : '');
+    line.innerHTML = `<span class="ts">${entry.time}</span> ${entry.message}`;
+    panel.appendChild(line);
+  });
+  panel.scrollTop = panel.scrollHeight;
+}
 
 function setDriveRowStatus(fileId, message, isError) {
+  const logs = driveRowLogs.get(fileId) || [];
+  logs.push({ time: new Date().toLocaleTimeString('ja-JP'), message, isError: !!isError });
+  if (logs.length > 50) logs.shift();
+  driveRowLogs.set(fileId, logs);
+
   const el = driveRowStatusEls.get(fileId);
-  if (!el) return;
-  el.textContent = message;
-  el.classList.toggle('err', !!isError);
-  el.style.display = 'block';
+  if (el) {
+    el.textContent = message;
+    el.classList.toggle('err', !!isError);
+    el.style.display = 'block';
+  }
+  renderDriveRowLogPanel(fileId);
 }
 
 function renderDriveRow(f) {
@@ -528,11 +555,36 @@ function renderDriveRow(f) {
   nameEl.appendChild(document.createTextNode(f.name));
   info.appendChild(nameEl);
 
+  const statusRow = document.createElement('div');
+  statusRow.className = 'drive-file-status-row';
+
   const statusEl = document.createElement('div');
   statusEl.className = 'drive-file-status';
   statusEl.style.display = 'none';
-  info.appendChild(statusEl);
+  statusRow.appendChild(statusEl);
+
+  const logToggle = document.createElement('button');
+  logToggle.type = 'button';
+  logToggle.className = 'drive-file-log-toggle';
+  logToggle.textContent = '詳細 ▾';
+  statusRow.appendChild(logToggle);
+
+  info.appendChild(statusRow);
   driveRowStatusEls.set(f.id, statusEl);
+
+  const logPanel = document.createElement('div');
+  logPanel.className = 'drive-file-log';
+  logPanel.style.display = 'none';
+  info.appendChild(logPanel);
+  driveRowLogEls.set(f.id, logPanel);
+  renderDriveRowLogPanel(f.id);
+
+  logToggle.addEventListener('click', () => {
+    const show = logPanel.style.display === 'none';
+    logPanel.style.display = show ? 'block' : 'none';
+    logToggle.textContent = show ? '詳細 ▴' : '詳細 ▾';
+    if (show) renderDriveRowLogPanel(f.id);
+  });
 
   row.appendChild(info);
 
@@ -601,6 +653,7 @@ function renderDriveFileList() {
   const listEl = $('#driveFileList');
   listEl.innerHTML = '';
   driveRowStatusEls.clear();
+  driveRowLogEls.clear(); // driveRowLogs(ログ履歴そのもの)は再描画を跨いで保持する
   if (!currentDriveFiles.length) { listEl.textContent = 'ファイルが見つかりません'; return; }
 
   const field = $('#driveSortField').value;

@@ -238,6 +238,7 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
 }
 .drive-file-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 120px; }
 .drive-file .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drive-file-status-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .drive-file-status {
   font-size: 11px;
   font-family: monospace;
@@ -245,8 +246,33 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 .drive-file-status.err { color: var(--danger); }
+.drive-file-log-toggle {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--accent-hover);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.drive-file-log {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #0a0b0e;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text-dim);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.drive-file-log-line { margin-bottom: 2px; }
+.drive-file-log-line.err { color: var(--danger); }
+.drive-file-log-line .ts { color: #555; margin-right: 6px; }
 .drive-file-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .badge {
