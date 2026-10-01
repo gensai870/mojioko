@@ -604,6 +604,12 @@ function renderDriveRow(f) {
   actions.appendChild(mainBtn);
 
   if (f.historyId) {
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'btn btn-sm';
+    viewBtn.textContent = '文字起こし表示';
+    viewBtn.addEventListener('click', () => viewHistoryText(f.historyId, f.name));
+    actions.appendChild(viewBtn);
+
     const sumBtn = document.createElement('button');
     sumBtn.className = 'btn btn-sm';
     sumBtn.textContent = '要約に進む';
@@ -729,6 +735,16 @@ async function fetchHistory(historyId) {
   const res = await fetch(`/api/history/${encodeURIComponent(historyId)}`);
   if (!res.ok) throw new Error('履歴の取得に失敗しました');
   return res.json();
+}
+
+async function viewHistoryText(historyId, fileName) {
+  try {
+    const row = await fetchHistory(historyId);
+    $('#resultText').value = row.full_text;
+    $('#resultCard').style.display = 'flex';
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 async function downloadHistoryText(historyId, fileName) {
