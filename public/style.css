@@ -318,6 +318,7 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
   margin-right: 4px;
 }
 .badge.ok { background: rgba(76, 175, 125, 0.18); color: var(--success); }
+.badge.unsummarizable { background: rgba(255, 107, 107, 0.15); color: var(--danger); }
 .badge.summarized { background: rgba(79, 140, 255, 0.18); color: var(--accent-hover); }
 
 .folder-chip {

@@ -551,6 +551,12 @@ function renderDriveRow(f) {
     b.className = 'badge summarized';
     b.textContent = '要約済';
     nameEl.appendChild(b);
+  } else if (f.tooShortToSummarize) {
+    const b = document.createElement('span');
+    b.className = 'badge unsummarizable';
+    b.textContent = '要約不可';
+    b.title = '文字起こしが短すぎるため要約できません';
+    nameEl.appendChild(b);
   }
   nameEl.appendChild(document.createTextNode(f.name));
   info.appendChild(nameEl);
@@ -621,6 +627,10 @@ function renderDriveRow(f) {
     const sumBtn = document.createElement('button');
     sumBtn.className = 'btn btn-sm';
     sumBtn.textContent = '要約に進む';
+    if (f.tooShortToSummarize && !f.summarized) {
+      sumBtn.disabled = true;
+      sumBtn.title = '文字起こしが短すぎるため要約できません';
+    }
     sumBtn.addEventListener('click', () => summarizeHistory(f.historyId, f.name, f.id));
     actions.appendChild(sumBtn);
 
