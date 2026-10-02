@@ -610,6 +610,14 @@ function renderDriveRow(f) {
     viewBtn.addEventListener('click', () => viewHistoryText(f.historyId, f.name));
     actions.appendChild(viewBtn);
 
+    if (f.summarized) {
+      const viewSumBtn = document.createElement('button');
+      viewSumBtn.className = 'btn btn-sm';
+      viewSumBtn.textContent = '要約表示';
+      viewSumBtn.addEventListener('click', () => viewHistorySummary(f.historyId));
+      actions.appendChild(viewSumBtn);
+    }
+
     const sumBtn = document.createElement('button');
     sumBtn.className = 'btn btn-sm';
     sumBtn.textContent = '要約に進む';
@@ -741,6 +749,17 @@ async function viewHistoryText(historyId, fileName) {
   try {
     const row = await fetchHistory(historyId);
     $('#resultText').value = row.full_text;
+    $('#resultCard').style.display = 'flex';
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+async function viewHistorySummary(historyId) {
+  try {
+    const row = await fetchHistory(historyId);
+    if (!row.summary) throw new Error('要約がまだありません');
+    $('#resultText').value = row.summary;
     $('#resultCard').style.display = 'flex';
   } catch (e) {
     toast(e.message);
