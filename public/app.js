@@ -879,8 +879,31 @@ async function summarizeHistory(historyId, fileName, driveFileId) {
         const partial = await postChatWithRetry('summarize-chunk', chunks[i], 800);
         partials.push(partial);
       }
+      // 部分要約の数が多いと、連結しただけで1回のリクエストがTPM上限を超える。
+      // 連結後もチャンクサイズを超える場合は、部分要約をグループ分けしてさらに要約する(階層的にまとめる)。
+      const SEP = '\n\n---\n\n';
+      let level = partials;
+      for (let round = 1; round <= 5 && level.join(SEP).length > 3500; round++) {
+        const groups = [];
+        let current = [];
+        for (const p of level) {
+          if (current.length && current.join(SEP).length + SEP.length + p.length > 3500) {
+            groups.push(current);
+            current = [];
+          }
+          current.push(p);
+        }
+        if (current.length) groups.push(current);
+        if (groups.length >= level.length) break; // これ以上まとまらない場合は無限ループを避ける
+        const next = [];
+        for (let g = 0; g < groups.length; g++) {
+          summarizeStatus(driveFileId, `部分要約を統合中(${round}回目 ${g + 1}/${groups.length})…`);
+          next.push(await postChatWithRetry('summarize-chunk', groups[g].join(SEP), 800));
+        }
+        level = next;
+      }
       summarizeStatus(driveFileId, '部分要約をまとめています…');
-      summary = await postChatWithRetry('summarize', partials.join('\n\n---\n\n'));
+      summary = await postChatWithRetry('summarize', level.join(SEP));
     }
 
     await fetch(`/api/history/${encodeURIComponent(historyId)}`, {
