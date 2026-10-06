@@ -493,7 +493,7 @@ renderFolderHistory();
 
 const DRIVE_AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
 let currentDriveFiles = [];
-let driveSortDir = 1; // 1 = 昇順, -1 = 降順
+let driveSortDir = -1; // 1 = 昇順, -1 = 降順(タイトルは日付始まりなので降順=最新が一番上)
 const driveRowStatusEls = new Map(); // fileId -> 行内ステータス表示要素(最新1行)
 const driveRowLogEls = new Map(); // fileId -> 詳細ログ表示要素(再描画のたびに作り直す)
 const driveRowLogs = new Map(); // fileId -> ログ履歴の配列(再描画を跨いで保持する)
