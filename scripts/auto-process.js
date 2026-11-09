@@ -12,8 +12,27 @@ function selectTargets(all, processedIds, { requested = [], since = '', max = 30
     const byId = new Map(all.map((f) => [f.id, f]));
     targets = requested.map((id) => byId.get(id)).filter((f) => f && AUDIO_EXT.test(f.name));
   } else {
+    // 同じ録音の二重保存(日時・サイズ・分割番号が同じで、ファイル名末尾のIDだけが違う。IDの形式が変わった時期に起きた)を飛ばす。
+    // すでに片方が処理済みなら、もう片方は対象外。どちらも未処理なら、名前順で先のほうだけを対象にする。
+    const dupKey = (f) => {
+      const m = f.name.match(/^(\d{4}-\d{2}-\d{2} \d{2}_\d{2}_\d{2})/);
+      return m ? `${m[1]}|${f.size}|${(f.name.match(/_part\d+/) || [''])[0]}` : null;
+    };
+    const groups = new Map();
+    for (const f of all) {
+      const k = dupKey(f);
+      if (k) groups.set(k, [...(groups.get(k) || []), f]);
+    }
+    const isDuplicate = (f) => {
+      const k = dupKey(f);
+      const g = k ? groups.get(k) : null;
+      if (!g || g.length < 2) return false;
+      if (g.some((x) => x.id !== f.id && processedIds.has(x.id))) return true;
+      return [...g].sort((a, b) => a.name.localeCompare(b.name, 'ja'))[0].id !== f.id;
+    };
     targets = all.filter((f) => {
       if (!AUDIO_EXT.test(f.name) || processedIds.has(f.id) || !(Number(f.size) > HOLD_MAX_BYTES)) return false;
+      if (isDuplicate(f)) return false;
       if (since) {
         const m = f.name.match(/^(\d{4}-\d{2}-\d{2})/);
         if (!m || m[1] < since) return false; // 日付が読めない、または開始日より前は対象外
