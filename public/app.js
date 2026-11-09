@@ -30,6 +30,118 @@ $('#groqKeyInput').addEventListener('change', () => {
   updateGroqDot();
 });
 
+// ==================== Grokキーとエンジン選択(localStorageのみ、サーバーには保存しない) ====================
+const GROK_KEY_STORAGE = 'mojioko:grokApiKey';
+const ENGINE_STORAGE = 'mojioko:engine';
+const GROK_STT_URL = 'https://api.x.ai/v1/stt';
+const GROK_MAX_FILE_BYTES = 500 * 1024 * 1024; // xAI側の上限
+const ENGINE_NOTES = {
+  groq: '無料枠は1時間あたり音声120分まで。話者は区別されません。長い録音は2分ごとに分割して処理します。',
+  grok: '話者ごとに「話者1:」「話者2:」と表示します。録音は分割せずに1回で送ります(最大500MB)。利用料金はxAIの前払いクレジットから引かれます。',
+};
+$('#grokKeyInput').value = localStorage.getItem(GROK_KEY_STORAGE) || '';
+$('#grokKeyInput').addEventListener('change', () => {
+  localStorage.setItem(GROK_KEY_STORAGE, $('#grokKeyInput').value.trim());
+  updateGrokDot();
+});
+function currentEngine() { return $('#optEngine').value === 'grok' ? 'grok' : 'groq'; }
+function updateGrokDot() {
+  const hasKey = !!localStorage.getItem(GROK_KEY_STORAGE);
+  $('#dot-grok').classList.toggle('on', hasKey);
+  $('#dot-grok').classList.toggle('off', !hasKey);
+}
+function refreshEngineNote() { $('#engineNote').textContent = ENGINE_NOTES[currentEngine()]; }
+{
+  const saved = localStorage.getItem(ENGINE_STORAGE);
+  if (saved === 'grok' || saved === 'groq') $('#optEngine').value = saved;
+}
+$('#optEngine').addEventListener('change', () => {
+  localStorage.setItem(ENGINE_STORAGE, currentEngine());
+  refreshEngineNote();
+});
+refreshEngineNote();
+updateGrokDot();
+
+// Grokの単語列を、話者の切り替わり・長い無音・文字数で区切った発言(セグメント)にまとめる
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function grokWordsToSegments(data, language) {
+  const words = Array.isArray(data.words) ? data.words.filter((w) => w && typeof w.text === 'string') : [];
+  if (!words.length) return data.text ? [{ start: 0, end: data.duration || 0, text: data.text }] : [];
+
+  const lang = (language && language !== 'auto' ? language : data.language || '').toLowerCase();
+  const joiner = /^(ja|zh)/.test(lang) ? '' : ' ';
+  const hasSpeaker = words.some((w) => Number.isInteger(w.speaker));
+  const GAP_SEC = 3, MAX_CHARS = 200;
+
+  const segments = [];
+  let cur = null;
+  const flush = () => {
+    if (!cur) return;
+    const label = hasSpeaker && Number.isInteger(cur.speaker) ? `話者${cur.speaker + 1}: ` : '';
+    segments.push({ start: cur.start, end: cur.end, speaker: cur.speaker, text: label + cur.parts.join(joiner) });
+    cur = null;
+  };
+  for (const w of words) {
+    const text = w.text.trim();
+    if (!text) continue;
+    const start = Number(w.start) || 0, end = Number(w.end) || start;
+    const speakerChanged = cur && hasSpeaker && w.speaker !== cur.speaker;
+    const gapped = cur && start - cur.end > GAP_SEC;
+    const tooLong = cur && cur.parts.join(joiner).length >= MAX_CHARS;
+    if (speakerChanged || gapped || tooLong) flush();
+    if (!cur) cur = { start, end, speaker: w.speaker, parts: [] };
+    cur.parts.push(text);
+    cur.end = end;
+  }
+  flush();
+  return segments;
+}
+
+// Grok呼び出し(ブラウザからxAIへ直接送信。429・通信断は待って再送する)
+async function transcribeWithGrok({ file, url, language }, onWait) {
+  const grokKey = localStorage.getItem(GROK_KEY_STORAGE);
+  if (!grokKey) throw new Error('Grok APIキーを入力してください');
+  if (file && file.size > GROK_MAX_FILE_BYTES) throw new Error('Grokは500MBまでのファイルに対応しています');
+
+  let networkRetries = 0;
+  for (let attempt = 0; attempt <= 5; attempt++) {
+    const form = new FormData(); // fileは最後のフィールドにする必要がある
+    if (language && language !== 'auto') { form.append('language', language); form.append('format', 'true'); }
+    form.append('diarize', 'true');
+    if (file) form.append('file', file, file.name); else form.append('url', url);
+
+    let res;
+    try {
+      res = await fetch(GROK_STT_URL, { method: 'POST', headers: { Authorization: `Bearer ${grokKey}` }, body: form });
+    } catch (e) {
+      networkRetries++;
+      if (networkRetries > 3) throw new Error(`通信エラーが続いたため中断しました: ${e.message}`);
+      if (onWait) onWait(5000, `通信エラー(${e.message})のため再試行します`);
+      await sleep(5000);
+      attempt--;
+      continue;
+    }
+    if (res.status === 429) {
+      const waitMs = (Number(res.headers.get('retry-after')) || 15) * 1000;
+      if (onWait) onWait(waitMs, 'Grokのレート制限に達しました');
+      await sleep(waitMs);
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      let msg = body;
+      try { const j = JSON.parse(body); msg = j.error?.message || j.error || j.message || body; } catch (_) {}
+      if (res.status === 401 || res.status === 403) throw new Error('Grok APIキーが無効です。キーを確認してください');
+      if (res.status === 402) throw new Error('Grokのクレジット残高が不足しています。console.x.aiでチャージしてください');
+      throw new Error(`Grokエラー(HTTP ${res.status}): ${String(msg).slice(0, 200)}`);
+    }
+    return res.json();
+  }
+  throw new Error('リトライ上限に達しました');
+}
+
 // ==================== Drive自動保存チェックボックス(localStorageに設定を記憶) ====================
 const AUTO_SAVE_DRIVE_STORAGE = 'mojioko:autoSaveDrive';
 {
@@ -275,7 +387,9 @@ $('#startBtn').addEventListener('click', async () => {
   const url = $('#urlInput').value.trim();
 
   if (!currentFile && !url) { toast('ファイルまたはURLを指定してください'); return; }
-  if (!localStorage.getItem(GROQ_KEY_STORAGE)) { toast('Groq APIキーを入力してください'); return; }
+  const engine = currentEngine();
+  if (engine === 'groq' && !localStorage.getItem(GROQ_KEY_STORAGE)) { toast('Groq APIキーを入力してください'); return; }
+  if (engine === 'grok' && !localStorage.getItem(GROK_KEY_STORAGE)) { toast('Grok APIキーを入力してください'); return; }
 
   const btn = $('#startBtn');
   btn.disabled = true;
@@ -297,7 +411,21 @@ $('#startBtn').addEventListener('click', async () => {
   try {
     let allSegments = [];
 
-    if (currentFile && currentFile.size > 4 * 1024 * 1024) {
+    if (engine === 'grok') {
+      // Grok: 分割せず録音全体を1回で送る(話者番号が録音全体で一貫する)
+      logLine(`【${fileName}】Grokに送信しています(長い録音は数分かかることがあります)…`);
+      updateProgress(0, 1);
+      const started = Date.now();
+      const data = await transcribeWithGrok(
+        currentFile ? { file: currentFile, language } : { url, language },
+        onWait,
+      );
+      allSegments = grokWordsToSegments(data, language);
+      if (!allSegments.length) throw new Error('Grokから文字起こし結果が返りませんでした');
+      const speakers = new Set(allSegments.map((s) => s.speaker).filter(Number.isInteger));
+      logLine(`Grokの処理が完了しました(${Math.round((Date.now() - started) / 1000)}秒、話者${speakers.size || '不明'}人)`);
+      updateProgress(1, 1);
+    } else if (currentFile && currentFile.size > 4 * 1024 * 1024) {
       logLine(`【${fileName}】音声を分割しています…`);
       const chunks = await splitAudioFile(currentFile, 120, (done, total) => {
         if (done === 1 || done === total || done % 5 === 0) logLine(`分割準備 ${done}/${total}`);
@@ -395,7 +523,7 @@ $('#startBtn').addEventListener('click', async () => {
     logLine('完了しました');
     toast('文字起こしが完了しました');
   } catch (e) {
-    logLine(`エラー: ${e.message}`, true);
+    logLine(`エラー: ${escapeHtml(e.message)}`, true);
     toast(e.message);
   } finally {
     btn.disabled = false;

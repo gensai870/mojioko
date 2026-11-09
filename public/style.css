@@ -369,3 +369,7 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
 @media (max-width: 640px) {
   .field-row { flex-direction: column; }
 }
+
+.card .field + .field { margin-top: 14px; }
+.card .field + .help-text, .card .help-text + .field { margin-top: 10px; }
+.engine-note { margin-top: 8px; }

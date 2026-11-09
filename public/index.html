@@ -26,18 +26,37 @@
   </div>
   <div class="status-row">
     <span class="status-pill"><span class="dot" id="dot-groq"></span>Groq</span>
+    <span class="status-pill"><span class="dot" id="dot-grok"></span>Grok</span>
     <span class="status-pill"><span class="dot" id="dot-drive"></span>Drive</span>
   </div>
 </header>
 
 <main>
   <div class="card">
-    <h2>① Groq APIキー</h2>
-    <p class="help-text">
-      <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> で発行したキーを入力してください。
-      このブラウザにのみ保存され、サーバーには保存されません。
-    </p>
-    <input type="password" id="groqKeyInput" placeholder="gsk_...">
+    <h2>① 文字起こしエンジンとAPIキー</h2>
+    <div class="field">
+      <label for="optEngine">文字起こしエンジン</label>
+      <select id="optEngine">
+        <option value="groq">Groq Whisper(無料枠あり・話者分離なし)</option>
+        <option value="grok">Grok Voice Transcribe 2.0(話者分離・長い録音も分割なし)</option>
+      </select>
+    </div>
+    <p class="help-text engine-note" id="engineNote"></p>
+    <div class="field">
+      <label for="groqKeyInput">Groq APIキー(要約・記事生成にも使います)</label>
+      <input type="password" id="groqKeyInput" placeholder="gsk_...">
+      <p class="help-text">
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> で発行したキーを入力してください。
+      </p>
+    </div>
+    <div class="field">
+      <label for="grokKeyInput">Grok(xAI)APIキー</label>
+      <input type="password" id="grokKeyInput" placeholder="xai-...">
+      <p class="help-text">
+        <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> で発行したキーを入力してください。
+        キーはこのブラウザにのみ保存され、サーバーには保存されません。Grokへの音声はこのブラウザからxAIへ直接送られます。
+      </p>
+    </div>
   </div>
 
   <div class="card">
