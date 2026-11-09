@@ -3,7 +3,37 @@
 const crypto = require('crypto');
 const { query, ensureSchema } = require('../../lib/db');
 
+// 同じ日付・同じタイトルの履歴がすでにあれば、タイトルの後ろに _2, _3 … を付けて重複を避ける
+async function makeUniqueTitle(title, fileName, excludeId) {
+  const m = (fileName || '').match(/(\d{4}-\d{2}-\d{2})/);
+  if (!title || !m) return title;
+  const rows = await query(
+    `SELECT title FROM history WHERE title IS NOT NULL AND file_name LIKE $1 AND ($2::text IS NULL OR id <> $2)`,
+    [`${m[1]}%`, excludeId || null]
+  );
+  const taken = new Set(rows.rows.map((r) => r.title));
+  if (!taken.has(title)) return title;
+  let n = 2;
+  while (taken.has(`${title}_${n}`)) n++;
+  return `${title}_${n}`;
+}
+
 module.exports = async function handler(req, res) {
+  if (req.method === 'GET') {
+    const url = new URL(req.url, 'http://x');
+    if (!url.searchParams.get('uniqueTitle')) return res.status(400).json({ error: { message: 'BAD_REQUEST' } });
+    try {
+      await ensureSchema();
+      const title = await makeUniqueTitle(
+        url.searchParams.get('title') || '',
+        url.searchParams.get('fileName') || '',
+        url.searchParams.get('excludeId') || null
+      );
+      return res.json({ title });
+    } catch (e) {
+      return res.status(500).json({ error: { message: e.message } });
+    }
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: { message: 'METHOD_NOT_ALLOWED' } });
 
   const chunks = [];

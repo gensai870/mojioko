@@ -38,7 +38,10 @@
       <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> で発行したキーを入力してください。
       キーはこのブラウザにのみ保存され、サーバーには保存されません。音声はこのブラウザからxAI(Grok Voice Transcribe 2.0)へ直接送られ、話者ごとに「話者1:」「話者2:」と表示されます。
     </p>
-    <input type="password" id="grokKeyInput" placeholder="xai-...">
+    <div class="key-row">
+      <input type="password" id="grokKeyInput" placeholder="grok_... または xai-..." autocomplete="off">
+      <button type="button" class="btn btn-sm" id="grokKeyToggleBtn" aria-pressed="false">表示</button>
+    </div>
     <!-- Groq関連の要素は、要約・記事生成の呼び出し側のコードが参照するため非表示で残している -->
     <input type="password" id="groqKeyInput" style="display:none" aria-hidden="true" tabindex="-1">
     <select id="optEngine" style="display:none" aria-hidden="true" tabindex="-1"><option value="grok" selected>Grok</option></select>

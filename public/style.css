@@ -381,3 +381,7 @@ textarea { resize: vertical; min-height: 200px; font-family: monospace; }
 .drive-batch-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .drive-batch-bar .btn-primary { flex: 0 1 auto; }
 .drive-batch-check { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+
+.key-row { display: flex; gap: 8px; align-items: stretch; }
+.key-row input { flex: 1; min-width: 0; }
+.key-row .btn { flex-shrink: 0; white-space: nowrap; }

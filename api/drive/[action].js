@@ -48,7 +48,7 @@ async function handleList(req, res, url) {
   await ensureSchema();
   const sourceKeys = files.map((f) => `drive:${f.id}`);
   const historyRes = await query(
-    `SELECT DISTINCT ON (source_key) source_key, id, summary, summary_drive_saved, length(full_text) AS text_len
+    `SELECT DISTINCT ON (source_key) source_key, id, title, summary, summary_drive_saved, length(full_text) AS text_len
      FROM history WHERE source_key = ANY($1)
      ORDER BY source_key, processed_at DESC`,
     [sourceKeys]
@@ -64,6 +64,7 @@ async function handleList(req, res, url) {
       ...f,
       processed: processedSet.has(f.id),
       historyId: history ? history.id : null,
+      title: history ? history.title || null : null,
       summarized: !!(history && history.summary),
       summarySavedToDrive: !!(history && history.summary_drive_saved),
       // 文字数(ヘッダー・タイムスタンプ込み)がこれ未満の文字起こしは、要約するには短すぎてモデルが聞き返してしまうため要約不可とする

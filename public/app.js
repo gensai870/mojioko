@@ -44,6 +44,14 @@ $('#grokKeyInput').addEventListener('change', () => {
   localStorage.setItem(GROK_KEY_STORAGE, $('#grokKeyInput').value.trim());
   updateGrokDot();
 });
+// キーの表示/非表示の切り替え(貼り間違いの確認用)
+$('#grokKeyToggleBtn').addEventListener('click', () => {
+  const input = $('#grokKeyInput');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  $('#grokKeyToggleBtn').textContent = show ? '隠す' : '表示';
+  $('#grokKeyToggleBtn').setAttribute('aria-pressed', String(show));
+});
 // しばらくGrokのみで運用する(Groq用のコードは残してあるので、ここを戻せば切り替えられる)
 function currentEngine() { return 'grok'; }
 function updateGrokDot() {
@@ -185,8 +193,34 @@ async function generateTitle(segments) {
   const data = await res.json();
   return sanitizeTitle(data.choices?.[0]?.message?.content);
 }
+// 日付(YYYY-MM-DD)をファイル名から取り出す。無ければnull
+function datePartOf(fileName) {
+  const m = (fileName || '').match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+// 出力ファイル名は「日付_タイトル」。日付かタイトルが無いときは元のファイル名を使う
 function buildOutFileName(fileName, title, format) {
-  return `${safeFileBaseName(fileName)}${title ? `_${title}` : ''}.${extFromFormat(format)}`;
+  const date = datePartOf(fileName);
+  const base = date && title ? `${date}_${title}` : safeFileBaseName(fileName);
+  return `${base}.${extFromFormat(format)}`;
+}
+// サイトの一覧に出す表示名(Driveの実ファイル名は変えない)
+function driveDisplayName(f) {
+  const date = datePartOf(f.name);
+  return f.title && date ? `${date}_${f.title}` : f.name;
+}
+// 同じ日付・同じタイトルがあれば後ろに _2, _3 を付けたタイトルを、サーバーに問い合わせて受け取る
+async function fetchUniqueTitle(title, fileName, excludeId) {
+  if (!title) return title;
+  try {
+    const qs = new URLSearchParams({ uniqueTitle: '1', title, fileName: fileName || '' });
+    if (excludeId) qs.set('excludeId', excludeId);
+    const res = await fetch(`/api/history?${qs}`);
+    const data = await res.json();
+    return sanitizeTitle(data.title) || title;
+  } catch (_) {
+    return title;
+  }
 }
 
 // ==================== Drive自動保存チェックボックス(localStorageに設定を記憶) ====================
@@ -545,6 +579,7 @@ async function runTranscription() {
     try {
       logLine('タイトルを作成しています…');
       title = await generateTitle(allSegments);
+      title = await fetchUniqueTitle(title, fileName, null);
       if (title) logLine(`タイトル: ${escapeHtml(title)}`);
     } catch (e) {
       logLine(`タイトルの自動作成に失敗しました(文字起こしは続行します): ${escapeHtml(e.message)}`, true);
@@ -633,9 +668,26 @@ $('#startBtn').addEventListener('click', () => {
 });
 
 // ==================== 一括文字起こし(1件ずつ順番に処理。失敗しても次へ進む) ====================
+// 一括中は画面の自動消灯を防ぎ(対応ブラウザのみ)、タブを閉じようとしたときに確認を出す
+let wakeLock = null;
+async function acquireWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (_) { wakeLock = null; }
+}
+function releaseWakeLock() {
+  try { if (wakeLock) wakeLock.release(); } catch (_) {}
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => { if (batchMode && document.visibilityState === 'visible') acquireWakeLock(); });
+window.addEventListener('beforeunload', (e) => {
+  if (!batchMode) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 async function runBatch(items) {
   if (!items.length || batchMode) return;
   batchMode = true;
+  acquireWakeLock();
   const startBtn = $('#startBtn');
   const batchBtn = $('#driveBatchBtn');
   startBtn.disabled = true;
@@ -662,6 +714,7 @@ async function runBatch(items) {
     }
   } finally {
     batchMode = false;
+    releaseWakeLock();
     startBtn.disabled = false;
     if (batchBtn) batchBtn.disabled = false;
     currentFile = null;
@@ -847,7 +900,8 @@ function renderDriveRow(f) {
     b.title = '文字起こしが短すぎるため要約できません';
     nameEl.appendChild(b);
   }
-  nameEl.appendChild(document.createTextNode(f.name));
+  nameEl.appendChild(document.createTextNode(driveDisplayName(f)));
+  if (f.title) nameEl.title = `元のファイル名: ${f.name}`;
   info.appendChild(nameEl);
 
   const statusRow = document.createElement('div');
@@ -1320,11 +1374,12 @@ $('#resultCloseBtn').addEventListener('click', () => {
 // タイトル変更: 結果の本文・履歴・Driveに保存した文字起こしファイル(名前と内容)をまとめて更新する
 $('#titleSaveBtn').addEventListener('click', async () => {
   if (!lastResult) return;
-  const newTitle = sanitizeTitle($('#titleInput').value);
-  if (!newTitle) { toast('タイトルを入力してください'); return; }
+  const typedTitle = sanitizeTitle($('#titleInput').value);
+  if (!typedTitle) { toast('タイトルを入力してください'); return; }
   const btn = $('#titleSaveBtn');
   btn.disabled = true;
   try {
+    const newTitle = await fetchUniqueTitle(typedTitle, lastResult.fileName, lastResult.historyId);
     const text = formatOutput(lastResult.fileName, lastResult.segments, lastResult.format, newTitle);
     $('#resultText').value = text;
     $('#titleInput').value = newTitle;
@@ -1350,7 +1405,8 @@ $('#titleSaveBtn').addEventListener('click', async () => {
       if (!r.ok) errors.push('Drive');
     }
     lastResult.title = newTitle;
-    toast(errors.length ? `タイトルを変更しました(${errors.join('・')}の更新に失敗)` : 'タイトルを変更しました');
+    const renamedNote = newTitle !== typedTitle ? `(同じ日に同じタイトルがあるため「${newTitle}」にしました)` : '';
+    toast(errors.length ? `タイトルを変更しました(${errors.join('・')}の更新に失敗)${renamedNote}` : `タイトルを変更しました${renamedNote}`);
   } catch (e) {
     toast(`タイトルの変更に失敗しました: ${e.message}`);
   } finally {
