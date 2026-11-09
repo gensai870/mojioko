@@ -119,6 +119,7 @@ async function transcribeWithGrok({ file, url, language }, onWait) {
     const form = new FormData(); // fileは最後のフィールドにする必要がある
     if (language && language !== 'auto') { form.append('language', language); form.append('format', 'true'); }
     form.append('diarize', 'true');
+    for (const t of (window.GROK_KEYTERMS || [])) form.append('keyterm', t);
     if (file) form.append('file', file, file.name); else form.append('url', url);
 
     let res;
