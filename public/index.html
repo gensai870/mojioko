@@ -12,7 +12,7 @@
   <div class="brand">
     <span class="logo">Mojioko-Gensai</span>
   </div>
-  <div class="header-usage" id="headerUsage">
+  <div class="header-usage" id="headerUsage" style="display:none">
     <div class="usage-chip">
       <span class="usage-chip-label">1時間</span>
       <span class="usage-chip-value" id="usageHourTextMini"></span>
@@ -25,7 +25,7 @@
     </div>
   </div>
   <div class="status-row">
-    <span class="status-pill"><span class="dot" id="dot-groq"></span>Groq</span>
+    <span class="status-pill" style="display:none"><span class="dot" id="dot-groq"></span>Groq</span>
     <span class="status-pill"><span class="dot" id="dot-grok"></span>Grok</span>
     <span class="status-pill"><span class="dot" id="dot-drive"></span>Drive</span>
   </div>
@@ -33,30 +33,16 @@
 
 <main>
   <div class="card">
-    <h2>① 文字起こしエンジンとAPIキー</h2>
-    <div class="field">
-      <label for="optEngine">文字起こしエンジン</label>
-      <select id="optEngine">
-        <option value="groq">Groq Whisper(無料枠あり・話者分離なし)</option>
-        <option value="grok">Grok Voice Transcribe 2.0(話者分離・長い録音も分割なし)</option>
-      </select>
-    </div>
-    <p class="help-text engine-note" id="engineNote"></p>
-    <div class="field">
-      <label for="groqKeyInput">Groq APIキー(要約・記事生成にも使います)</label>
-      <input type="password" id="groqKeyInput" placeholder="gsk_...">
-      <p class="help-text">
-        <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> で発行したキーを入力してください。
-      </p>
-    </div>
-    <div class="field">
-      <label for="grokKeyInput">Grok(xAI)APIキー</label>
-      <input type="password" id="grokKeyInput" placeholder="xai-...">
-      <p class="help-text">
-        <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> で発行したキーを入力してください。
-        キーはこのブラウザにのみ保存され、サーバーには保存されません。Grokへの音声はこのブラウザからxAIへ直接送られます。
-      </p>
-    </div>
+    <h2>① Grok APIキー</h2>
+    <p class="help-text">
+      <a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a> で発行したキーを入力してください。
+      キーはこのブラウザにのみ保存され、サーバーには保存されません。音声はこのブラウザからxAI(Grok Voice Transcribe 2.0)へ直接送られ、話者ごとに「話者1:」「話者2:」と表示されます。
+    </p>
+    <input type="password" id="grokKeyInput" placeholder="xai-...">
+    <!-- Groq関連の要素は、要約・記事生成の呼び出し側のコードが参照するため非表示で残している -->
+    <input type="password" id="groqKeyInput" style="display:none" aria-hidden="true" tabindex="-1">
+    <select id="optEngine" style="display:none" aria-hidden="true" tabindex="-1"><option value="grok" selected>Grok</option></select>
+    <p id="engineNote" style="display:none"></p>
   </div>
 
   <div class="card">

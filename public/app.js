@@ -44,7 +44,8 @@ $('#grokKeyInput').addEventListener('change', () => {
   localStorage.setItem(GROK_KEY_STORAGE, $('#grokKeyInput').value.trim());
   updateGrokDot();
 });
-function currentEngine() { return $('#optEngine').value === 'grok' ? 'grok' : 'groq'; }
+// しばらくGrokのみで運用する(Groq用のコードは残してあるので、ここを戻せば切り替えられる)
+function currentEngine() { return 'grok'; }
 function updateGrokDot() {
   const hasKey = !!localStorage.getItem(GROK_KEY_STORAGE);
   $('#dot-grok').classList.toggle('on', hasKey);
