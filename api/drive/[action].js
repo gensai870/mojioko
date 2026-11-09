@@ -116,6 +116,15 @@ async function handleUploadText(req, res) {
   res.json({ ok: true, file });
 }
 
+async function handleUpdateText(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: { message: 'METHOD_NOT_ALLOWED' } });
+  const { fileId, fileName, content } = await readJsonBody(req);
+  if (!fileId) return res.status(400).json({ error: { message: 'fileIdが指定されていません' } });
+  if (!fileName && content === undefined) return res.status(400).json({ error: { message: '更新項目がありません' } });
+  const file = await drive.updateTextFile(fileId, { name: fileName, content });
+  res.json({ ok: true, file });
+}
+
 const HANDLERS = {
   status: handleStatus,
   'auth-url': handleAuthUrl,
@@ -126,6 +135,7 @@ const HANDLERS = {
   download: handleDownload,
   'folder-name': handleFolderName,
   'upload-text': handleUploadText,
+  'update-text': handleUpdateText,
 };
 
 module.exports = async function handler(req, res) {

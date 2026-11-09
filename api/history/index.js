@@ -15,16 +15,16 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: { message: 'INVALID_JSON' } });
   }
 
-  const { fileName, sourceType, sourceKey, outputFormat, mode, fullText } = body;
+  const { fileName, sourceType, sourceKey, outputFormat, mode, fullText, title } = body;
   if (!fullText) return res.status(400).json({ error: { message: 'fullTextが指定されていません' } });
 
   try {
     await ensureSchema();
     const id = crypto.randomUUID();
     await query(
-      `INSERT INTO history (id, file_name, source_type, source_key, output_format, mode, full_text)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, fileName || null, sourceType || null, sourceKey || null, outputFormat || null, mode || 'transcript', fullText]
+      `INSERT INTO history (id, file_name, source_type, source_key, output_format, mode, full_text, title)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, fileName || null, sourceType || null, sourceKey || null, outputFormat || null, mode || 'transcript', fullText, title || null]
     );
     if (sourceType === 'drive' && sourceKey) {
       const fileId = sourceKey.replace(/^drive:/, '');

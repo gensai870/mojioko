@@ -48,9 +48,9 @@
   <div class="card">
     <h2>② 音声を入力</h2>
     <div class="dropzone" id="dropzone">
-      <div class="big">クリックまたはドラッグ&ドロップでファイルを選択</div>
+      <div class="big">クリックまたはドラッグ&ドロップでファイルを選択(複数選択で一括処理)</div>
       <div class="small">MP3, WAV, M4A, MP4, FLAC, OGG</div>
-      <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.opus,audio/*">
+      <input type="file" id="fileInput" multiple accept=".mp3,.wav,.m4a,.mp4,.flac,.ogg,.opus,audio/*">
     </div>
     <div class="file-chip" id="fileChip" style="display:none;">
       <span id="fileChipName"></span>
@@ -126,6 +126,11 @@
       </div>
       <button class="btn btn-sm" id="driveSortDirBtn" title="昇順/降順を切り替え">▼ 降順</button>
     </div>
+    <div class="drive-batch-bar">
+      <button class="btn btn-sm" id="driveSelectUnprocessedBtn">未処理を全選択</button>
+      <button class="btn btn-sm" id="driveSelectClearBtn">選択を解除</button>
+      <button class="btn btn-sm btn-primary" id="driveBatchBtn" disabled>選択した0件を一括文字起こし</button>
+    </div>
     <div id="driveFileList" style="margin-top:12px;"></div>
   </div>
 
@@ -134,6 +139,11 @@
       <div class="result-modal-header">
         <h2>結果</h2>
         <button class="result-modal-close" id="resultCloseBtn" aria-label="閉じる">✕</button>
+      </div>
+      <div class="title-edit-row" id="titleEditRow" style="display:none;">
+        <label for="titleInput">タイトル</label>
+        <input type="text" id="titleInput" maxlength="60" placeholder="タイトルを入力">
+        <button class="btn btn-sm" id="titleSaveBtn">タイトルを変更</button>
       </div>
       <textarea id="resultText" readonly></textarea>
       <div class="btn-row" style="margin-top:12px;">
