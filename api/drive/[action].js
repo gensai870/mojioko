@@ -2,6 +2,7 @@
 // 元は9本あったapi/drive/*.jsをこの1本の動的ルートに統合した。
 // URLパス(/api/drive/status, /api/drive/list等)はすべて変更していないので、
 // フロントエンドのfetch先やGoogle Cloud ConsoleのリダイレクトURI登録はそのまま使える。
+const crypto = require('crypto');
 const drive = require('../../lib/googleDrive');
 const { query, ensureSchema } = require('../../lib/db');
 
@@ -149,6 +150,31 @@ async function handleDispatch(req, res) {
   res.json({ ok: true, count: ids.length, actionsUrl: `https://github.com/${repo}/actions/workflows/auto-process.yml` });
 }
 
+// 自動処理(GitHub Actions)にだけ、Driveの短時間有効なアクセストークンを渡す。
+// GoogleのクライアントIDとシークレットをGitHubに置かずに済むようにするための入口。
+// JOB_SHARED_SECRET(Vercelの環境変数)と同じ値をBearerで送ってきたときだけ応答する。未設定なら無効。
+async function handleJobToken(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: { message: 'METHOD_NOT_ALLOWED' } });
+  const secret = (process.env.JOB_SHARED_SECRET || '').trim();
+  if (secret.length < 32) return res.status(404).json({ error: { message: 'NOT_FOUND' } });
+  const given = Buffer.from((req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim());
+  const expected = Buffer.from(secret);
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+    return res.status(401).json({ error: { message: 'UNAUTHORIZED' } });
+  }
+  const client = await drive.getOAuth2Client();
+  let { token } = await client.getAccessToken();
+  let expiry = client.credentials.expiry_date;
+  if (!token || (expiry && expiry - Date.now() < 10 * 60 * 1000)) {
+    // 期限が近いときは作り直して、受け取った側がすぐ期限切れにならないようにする
+    const r = await client.refreshAccessToken();
+    token = r.credentials.access_token;
+    expiry = r.credentials.expiry_date;
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ accessToken: token, expiryDate: expiry || Date.now() + 30 * 60 * 1000 });
+}
+
 const HANDLERS = {
   status: handleStatus,
   'auth-url': handleAuthUrl,
@@ -161,6 +187,7 @@ const HANDLERS = {
   'upload-text': handleUploadText,
   'update-text': handleUpdateText,
   dispatch: handleDispatch,
+  'job-token': handleJobToken,
 };
 
 module.exports = async function handler(req, res) {

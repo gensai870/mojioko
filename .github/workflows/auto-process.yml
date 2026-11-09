@@ -32,14 +32,15 @@ jobs:
       - name: Process files
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Googleのクライアントシークレットは使わず、mojioko本体から短時間有効なDriveトークンを受け取る
+          JOB_TOKEN_URL: https://mojioko.vercel.app/api/drive/job-token
+          JOB_SHARED_SECRET: ${{ secrets.JOB_SHARED_SECRET }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           GOOGLE_DRIVE_UPLOAD_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_UPLOAD_FOLDER_ID }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           FILE_IDS: ${{ github.event.inputs.file_ids }}
         run: |
-          if [ -z "$XAI_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || [ -z "$GOOGLE_CLIENT_ID" ]; then
+          if [ -z "$XAI_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || [ -z "$JOB_SHARED_SECRET" ]; then
             echo "::warning::必要なSecretsが未設定のため、今回の自動処理はスキップしました(PROGRESS.mdの「バックグラウンド処理の設定」を参照)"
             exit 0
           fi

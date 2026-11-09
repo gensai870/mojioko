@@ -79,6 +79,7 @@
 
 1. GitHubリポジトリ(gensai870/mojioko)の Settings → Secrets and variables → Actions に、次のRepository secretsを登録する。
    - `XAI_API_KEY`(Grokの新しいAPIキー。自動処理専用に作り、ブラウザ用とは別にするのがおすすめ)
-   - `SUPABASE_DB_URL`、`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_DRIVE_FOLDER_ID`、`GOOGLE_DRIVE_UPLOAD_FOLDER_ID`(Vercelの環境変数と同じ値)
+   - `SUPABASE_DB_URL`、`GOOGLE_DRIVE_FOLDER_ID`、`GOOGLE_DRIVE_UPLOAD_FOLDER_ID`(Vercelの環境変数と同じ値)
+   - `JOB_SHARED_SECRET`(自分で作る合言葉。`openssl rand -hex 32` の出力。**Vercelの環境変数 `JOB_SHARED_SECRET` にも同じ値**を登録して再デプロイ)。GoogleのクライアントID/シークレットはGitHubに置かない(Vercelの `api/drive/job-token` が、短時間有効なDriveのアクセストークンを渡す)
 2. Webの「バックグラウンドで処理」ボタン用に、GitHubのFine-grained personal access tokenを作る(対象: このリポジトリのみ、権限: Actions → Read and write)。それをVercelの環境変数 `GITHUB_DISPATCH_TOKEN` に登録して再デプロイする。
 3. Secretsが未設定の間は、定期実行は警告を出してスキップするだけで失敗扱いにはならない。
