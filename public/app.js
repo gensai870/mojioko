@@ -492,6 +492,13 @@ function renderFolderHistory() {
 renderFolderHistory();
 
 const DRIVE_AUDIO_EXT = /\.(mp3|wav|m4a|mp4|flac|ogg|opus)$/i;
+const HOLD_TRANSCRIBE_MAX_BYTES = 0.5 * 1024 * 1024; // これ以下の音声は文字起保留(誤録音など短いものにGroqの課金・枠を使わないため)
+
+function formatDriveFileSize(bytes) {
+  if (!Number.isFinite(bytes)) return '';
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
 let currentDriveFiles = [];
 let driveSortDir = -1; // 1 = 昇順, -1 = 降順(タイトルは日付始まりなので降順=最新が一番上)
 const driveRowStatusEls = new Map(); // fileId -> 行内ステータス表示要素(最新1行)
@@ -535,6 +542,10 @@ function renderDriveRow(f) {
   const row = document.createElement('div');
   row.className = 'drive-file';
 
+  const isAudio = DRIVE_AUDIO_EXT.test(f.name);
+  const sizeBytes = f.size == null ? NaN : Number(f.size);
+  const holdTranscribe = isAudio && !f.processed && Number.isFinite(sizeBytes) && sizeBytes <= HOLD_TRANSCRIBE_MAX_BYTES;
+
   const info = document.createElement('div');
   info.className = 'drive-file-info';
 
@@ -544,6 +555,13 @@ function renderDriveRow(f) {
     const b = document.createElement('span');
     b.className = 'badge ok';
     b.textContent = '✓済';
+    nameEl.appendChild(b);
+  }
+  if (holdTranscribe) {
+    const b = document.createElement('span');
+    b.className = 'badge held';
+    b.textContent = '文字起保留';
+    b.title = 'ファイルサイズが0.5MB以下のため文字起こしを保留しています';
     nameEl.appendChild(b);
   }
   if (f.summarized) {
@@ -563,6 +581,14 @@ function renderDriveRow(f) {
 
   const statusRow = document.createElement('div');
   statusRow.className = 'drive-file-status-row';
+
+  const sizeText = formatDriveFileSize(sizeBytes);
+  if (sizeText) {
+    const sizeEl = document.createElement('span');
+    sizeEl.className = 'file-size';
+    sizeEl.textContent = sizeText;
+    statusRow.appendChild(sizeEl);
+  }
 
   const statusEl = document.createElement('div');
   statusEl.className = 'drive-file-status';
@@ -596,12 +622,15 @@ function renderDriveRow(f) {
 
   const actions = document.createElement('div');
   actions.className = 'drive-file-actions';
-  const isAudio = DRIVE_AUDIO_EXT.test(f.name);
 
   const mainBtn = document.createElement('button');
   mainBtn.className = 'btn btn-sm';
   if (isAudio) {
     mainBtn.textContent = f.processed ? '再文字起こし' : '文字起こし';
+    if (holdTranscribe) {
+      mainBtn.disabled = true;
+      mainBtn.title = 'ファイルサイズが0.5MB以下のため文字起こしを保留しています';
+    }
     mainBtn.addEventListener('click', () => loadDriveFileAsAudio(f.id, f.name, f.mimeType));
   } else {
     mainBtn.textContent = '読み込む';
