@@ -126,6 +126,29 @@ async function handleUpdateText(req, res) {
   res.json({ ok: true, file });
 }
 
+// バックグラウンド一括処理: GitHub Actions(auto-process.yml)を起動する。
+// 実行はクラウド側で進むため、ブラウザのタブを閉じても・スマホで画面を切り替えても止まらない。
+async function handleDispatch(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: { message: 'METHOD_NOT_ALLOWED' } });
+  const token = (process.env.GITHUB_DISPATCH_TOKEN || '').trim();
+  if (!token) return res.status(400).json({ error: { message: 'バックグラウンド処理が未設定です(Vercelの環境変数 GITHUB_DISPATCH_TOKEN が必要です)' } });
+  const repo = (process.env.GITHUB_REPO || 'gensai870/mojioko').trim();
+  const { fileIds } = await readJsonBody(req);
+  const ids = Array.isArray(fileIds) ? fileIds.filter((x) => typeof x === 'string' && /^[A-Za-z0-9_-]{10,}$/.test(x)) : [];
+  if (!ids.length) return res.status(400).json({ error: { message: '対象のファイルが指定されていません' } });
+  if (ids.length > 200) return res.status(400).json({ error: { message: '一度に指定できるのは200件までです' } });
+  const ghRes = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/auto-process.yml/dispatches`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ref: 'main', inputs: { file_ids: ids.join(',') } }),
+  });
+  if (ghRes.status !== 204) {
+    const t = await ghRes.text().catch(() => '');
+    return res.status(502).json({ error: { message: `GitHub Actionsの起動に失敗しました(HTTP ${ghRes.status}): ${t.slice(0, 200)}` } });
+  }
+  res.json({ ok: true, count: ids.length, actionsUrl: `https://github.com/${repo}/actions/workflows/auto-process.yml` });
+}
+
 const HANDLERS = {
   status: handleStatus,
   'auth-url': handleAuthUrl,
@@ -137,6 +160,7 @@ const HANDLERS = {
   'folder-name': handleFolderName,
   'upload-text': handleUploadText,
   'update-text': handleUpdateText,
+  dispatch: handleDispatch,
 };
 
 module.exports = async function handler(req, res) {

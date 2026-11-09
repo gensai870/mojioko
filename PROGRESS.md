@@ -65,3 +65,20 @@
 - 文字起こし: 本番URLで実ファイルを使い動作確認済み。
 - Drive連携: OAuth接続・フォルダ一覧・音声ダウンロード→文字起こし投入まで実際に動作確認済み(30MBの`.ogg`ファイルで確認)。
 - 使用量メーター・レイアウト変更: pushしてデプロイ済み(このMD作成時点でデプロイ確認中)。
+
+## Grok文字起こし・自動要約・バックグラウンド処理(2026-11)
+
+- 文字起こしはGrok Voice Transcribe 2.0に固定(話者分離つき、録音全体を分割せず1回で送信)。ブラウザからxAIへ直接送る。
+- 文字起こし後に、Grokでタイトルを自動作成 → 要約を自動作成。出力ファイル名は「日付_タイトル.txt」「日付_タイトル_要約.txt」(同じ日に同じタイトルなら `_2`, `_3`)。
+- 結果画面の「タイトルを変更」で、履歴・Driveのテキスト/要約ファイルの名前と内容をまとめて更新できる。
+- 複数ファイルの一括文字起こし(ブラウザで順次処理)と、「バックグラウンドで処理」(GitHub Actionsで処理。タブを閉じても止まらない)。
+- 自動処理: `.github/workflows/auto-process.yml` が1日2回(JST 07:30 / 19:30)、Driveの未処理の音声(0.5MB超)を「文字起こし → タイトル → 要約 → Driveに保存」まで処理する。1回あたり最大30件(`MAX_FILES_PER_RUN`)。
+  - 処理本体: `scripts/auto-process.js` / `lib/grokJob.js`。要約のプロンプトは `lib/promptTemplates.js` を共通で使用。
+
+### バックグラウンド処理の設定(1回だけ)
+
+1. GitHubリポジトリ(gensai870/mojioko)の Settings → Secrets and variables → Actions に、次のRepository secretsを登録する。
+   - `XAI_API_KEY`(Grokの新しいAPIキー。自動処理専用に作り、ブラウザ用とは別にするのがおすすめ)
+   - `SUPABASE_DB_URL`、`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`GOOGLE_DRIVE_FOLDER_ID`、`GOOGLE_DRIVE_UPLOAD_FOLDER_ID`(Vercelの環境変数と同じ値)
+2. Webの「バックグラウンドで処理」ボタン用に、GitHubのFine-grained personal access tokenを作る(対象: このリポジトリのみ、権限: Actions → Read and write)。それをVercelの環境変数 `GITHUB_DISPATCH_TOKEN` に登録して再デプロイする。
+3. Secretsが未設定の間は、定期実行は警告を出してスキップするだけで失敗扱いにはならない。

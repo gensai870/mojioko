@@ -2,21 +2,7 @@
 // 今のところはDriveの「✓済/要約済」バッジ判定に必要な最小限の機能のみ。
 const crypto = require('crypto');
 const { query, ensureSchema } = require('../../lib/db');
-
-// 同じ日付・同じタイトルの履歴がすでにあれば、タイトルの後ろに _2, _3 … を付けて重複を避ける
-async function makeUniqueTitle(title, fileName, excludeId) {
-  const m = (fileName || '').match(/(\d{4}-\d{2}-\d{2})/);
-  if (!title || !m) return title;
-  const rows = await query(
-    `SELECT title FROM history WHERE title IS NOT NULL AND file_name LIKE $1 AND ($2::text IS NULL OR id <> $2)`,
-    [`${m[1]}%`, excludeId || null]
-  );
-  const taken = new Set(rows.rows.map((r) => r.title));
-  if (!taken.has(title)) return title;
-  let n = 2;
-  while (taken.has(`${title}_${n}`)) n++;
-  return `${title}_${n}`;
-}
+const { makeUniqueTitle } = require('../../lib/titles');
 
 module.exports = async function handler(req, res) {
   if (req.method === 'GET') {

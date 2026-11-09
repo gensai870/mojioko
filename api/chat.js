@@ -5,6 +5,9 @@ const { SUMMARIZE_PROMPT, CHUNK_PROMPT, PROPOSE_PROMPT, GENERATE_PROMPT, SOCIAL_
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_CHAT_MODEL = process.env.GROQ_CHAT_MODEL || 'openai/gpt-oss-120b';
+// x-grok-key ヘッダーがあればGrok(xAI)へ転送する。1Mトークンの文脈に対応するため、長文でも分割せず1回で要約できる。
+const GROK_CHAT_URL = 'https://api.x.ai/v1/chat/completions';
+const GROK_CHAT_MODEL = process.env.GROK_CHAT_MODEL || 'grok-4.20-0309-non-reasoning';
 
 function buildMessages(promptType, content) {
   switch (promptType) {
@@ -28,12 +31,13 @@ function buildMessages(promptType, content) {
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-groq-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-groq-key, x-grok-key');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: { message: 'METHOD_NOT_ALLOWED' } });
 
-  const apiKey = req.headers['x-groq-key'];
-  if (!apiKey) return res.status(400).json({ error: { message: 'Groq APIキーが指定されていません' } });
+  const grokKey = req.headers['x-grok-key'];
+  const apiKey = grokKey || req.headers['x-groq-key'];
+  if (!apiKey) return res.status(400).json({ error: { message: 'APIキーが指定されていません' } });
 
   const chunks = [];
   for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
@@ -49,10 +53,10 @@ module.exports = async function handler(req, res) {
   if (!messages) return res.status(400).json({ error: { message: `不明なpromptType: ${promptType}` } });
 
   try {
-    const groqRes = await fetch(GROQ_CHAT_URL, {
+    const groqRes = await fetch(grokKey ? GROK_CHAT_URL : GROQ_CHAT_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: GROQ_CHAT_MODEL, messages, temperature: 0.7, max_tokens: maxTokens || 2000 }),
+      body: JSON.stringify({ model: grokKey ? GROK_CHAT_MODEL : GROQ_CHAT_MODEL, messages, temperature: 0.7, max_tokens: maxTokens || 2000 }),
     });
 
     for (const key of ['x-ratelimit-limit-tokens', 'x-ratelimit-remaining-tokens', 'x-ratelimit-reset-tokens']) {

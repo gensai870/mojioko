@@ -204,6 +204,9 @@ function buildOutFileName(fileName, title, format) {
   const base = date && title ? `${date}_${title}` : safeFileBaseName(fileName);
   return `${base}.${extFromFormat(format)}`;
 }
+function buildSummaryFileName(fileName, title) {
+  return buildOutFileName(fileName, title, 'plain').replace(/\.txt$/, '_要約.txt');
+}
 // サイトの一覧に出す表示名(Driveの実ファイル名は変えない)
 function driveDisplayName(f) {
   const date = datePartOf(f.name);
@@ -480,6 +483,7 @@ setInterval(() => { refreshUsageUI(); refreshDriveStatus(); }, 20000);
 // ==================== 文字起こし本体 ====================
 let batchMode = false; // 一括処理中は、結果ポップアップ・ログ消去・一覧更新を抑える
 let lastResult = null; // 直近の文字起こし結果(タイトル編集用)
+let showingSummary = false;
 async function runTranscription() {
   const format = $('#optFormat').value;
   const language = $('#optLanguage').value;
@@ -497,6 +501,9 @@ async function runTranscription() {
     $('#resultCard').style.display = 'none';
   }
   lastResult = null;
+  showingSummary = false;
+  $('#toggleSummaryBtn').style.display = 'none';
+  $('#toggleSummaryBtn').textContent = '要約を見る';
   $('#progressWrap').style.display = 'block';
   $('#progressFill').style.width = '0%';
 
@@ -634,6 +641,37 @@ async function runTranscription() {
           logLine('Google Driveへの保存が完了しました');
         } catch (e) {
           logLine(`Drive保存に失敗しました: ${e.message}`, true);
+        }
+      }
+
+      // 自動要約(短すぎる文字起こしは要約しない)。失敗しても文字起こしは保存済み
+      const plainText = allSegments.map((s) => s.text.trim()).join('\n');
+      if (historyData.id && plainText.length >= 300) {
+        try {
+          logLine('要約を作成しています…');
+          const summary = ((await postChatWithRetry('summarize', plainText.slice(0, 400000))) || '').trim();
+          if (summary) {
+            await fetch(`/api/history/${encodeURIComponent(historyData.id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ summary }),
+            });
+            if (lastResult) lastResult.summary = summary;
+            if (autoSaveCheckbox && autoSaveCheckbox.checked) {
+              const sumRes = await fetch('/api/drive/upload-text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileName: buildSummaryFileName(fileName, title), content: summary, target: 'summary', historyId: historyData.id }),
+              });
+              const sumData = await sumRes.json();
+              if (sumData.error) throw new Error(sumData.error.message);
+              if (lastResult) lastResult.driveSummaryFileId = sumData.file?.id || null;
+            }
+            logLine('要約が完了しました');
+            if (!batchMode && lastResult) $('#toggleSummaryBtn').style.display = 'inline-block';
+          }
+        } catch (e) {
+          logLine(`要約に失敗しました(文字起こしは保存済み): ${escapeHtml(e.message)}`, true);
         }
       }
 
@@ -1047,7 +1085,35 @@ function updateDriveBatchBar() {
   const btn = $('#driveBatchBtn');
   btn.textContent = `選択した${n}件を一括文字起こし`;
   btn.disabled = n === 0 || batchMode;
+  const bg = $('#driveBgBtn');
+  bg.textContent = `選択した${n}件をバックグラウンドで処理(閉じてOK)`;
+  bg.disabled = n === 0 || batchMode;
 }
+// クラウド(GitHub Actions)で処理する。ブラウザを閉じても、スマホで画面を切り替えても止まらない
+$('#driveBgBtn').addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('.drive-batch-check:checked')].map((cb) => cb.dataset.id);
+  if (!ids.length) return;
+  const btn = $('#driveBgBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/drive/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileIds: ids }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    selectedDriveIds.clear();
+    document.querySelectorAll('.drive-batch-check').forEach((cb) => { cb.checked = false; });
+    logLine(`バックグラウンド処理を開始しました(${data.count}件)。文字起こし・タイトル・要約までクラウドで進みます。完了まで数分〜数十分かかります。このページを閉じても大丈夫です。終わったら「一覧を取得」で✓済を確認してください。`);
+    toast(`バックグラウンドで${data.count}件の処理を開始しました。閉じても進みます`);
+  } catch (e) {
+    toast(e.message);
+    logLine(`バックグラウンド処理を開始できませんでした: ${escapeHtml(e.message)}`, true);
+  } finally {
+    updateDriveBatchBar();
+  }
+});
 $('#driveSelectUnprocessedBtn').addEventListener('click', () => {
   document.querySelectorAll('.drive-batch-check').forEach((cb) => {
     const f = currentDriveFiles.find((x) => x.id === cb.dataset.id);
@@ -1221,15 +1287,18 @@ function splitIntoChunks(text, chunkChars = 3500) {
 }
 
 async function postChatWithRetry(promptType, content, maxTokens) {
+  // Grokのキーがあればそちらを使う(長文も分割せず要約できる)。無ければ従来どおりGroq
+  const grokKey = localStorage.getItem(GROK_KEY_STORAGE);
   const groqKey = localStorage.getItem(GROQ_KEY_STORAGE);
-  if (!groqKey) throw new Error('Groq APIキーを入力してください');
+  if (!grokKey && !groqKey) throw new Error('Grok APIキーを入力してください');
+  const keyHeader = grokKey ? { 'x-grok-key': grokKey } : { 'x-groq-key': groqKey };
   let networkRetries = 0;
   for (let attempt = 0; attempt <= 4; attempt++) {
     let res;
     try {
       res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-groq-key': groqKey },
+        headers: { 'Content-Type': 'application/json', ...keyHeader },
         body: JSON.stringify({ promptType, content, maxTokens }),
       });
     } catch (e) {
@@ -1270,7 +1339,7 @@ async function summarizeHistory(historyId, fileName, driveFileId) {
     // Groqのチャットモデルは1分あたりのトークン数(TPM)に上限があり、長い文字起こしをそのまま
     // 1回で送ると「Request too large」で失敗する(429と違い待っても解決しない)。
     // ローカル版と同様、長い場合はチャンクに分けて部分要約→それらをまとめて最終要約する。
-    const chunks = splitIntoChunks(row.full_text);
+    const chunks = localStorage.getItem(GROK_KEY_STORAGE) ? [row.full_text] : splitIntoChunks(row.full_text);
     let summary;
     if (chunks.length === 1) {
       summary = await postChatWithRetry('summarize', chunks[0]);
@@ -1369,6 +1438,18 @@ async function handleDriveMoreAction(action, f) {
 $('#resultCloseBtn').addEventListener('click', () => {
   $('#resultCard').style.display = 'none';
   $('#titleEditRow').style.display = 'none';
+  $('#toggleSummaryBtn').style.display = 'none';
+  showingSummary = false;
+});
+
+// 結果画面で、文字起こしと要約の表示を切り替える
+$('#toggleSummaryBtn').addEventListener('click', () => {
+  if (!lastResult || !lastResult.summary) return;
+  showingSummary = !showingSummary;
+  $('#resultText').value = showingSummary
+    ? lastResult.summary
+    : formatOutput(lastResult.fileName, lastResult.segments, lastResult.format, lastResult.title);
+  $('#toggleSummaryBtn').textContent = showingSummary ? '文字起こしに戻す' : '要約を見る';
 });
 
 // タイトル変更: 結果の本文・履歴・Driveに保存した文字起こしファイル(名前と内容)をまとめて更新する
@@ -1381,7 +1462,7 @@ $('#titleSaveBtn').addEventListener('click', async () => {
   try {
     const newTitle = await fetchUniqueTitle(typedTitle, lastResult.fileName, lastResult.historyId);
     const text = formatOutput(lastResult.fileName, lastResult.segments, lastResult.format, newTitle);
-    $('#resultText').value = text;
+    if (!showingSummary) $('#resultText').value = text;
     $('#titleInput').value = newTitle;
     const errors = [];
     if (lastResult.historyId) {
@@ -1403,6 +1484,14 @@ $('#titleSaveBtn').addEventListener('click', async () => {
         }),
       });
       if (!r.ok) errors.push('Drive');
+    }
+    if (lastResult.driveSummaryFileId) {
+      const r = await fetch('/api/drive/update-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: lastResult.driveSummaryFileId, fileName: buildSummaryFileName(lastResult.fileName, newTitle) }),
+      });
+      if (!r.ok) errors.push('要約のDrive');
     }
     lastResult.title = newTitle;
     const renamedNote = newTitle !== typedTitle ? `(同じ日に同じタイトルがあるため「${newTitle}」にしました)` : '';

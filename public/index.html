@@ -133,6 +133,7 @@
       <button class="btn btn-sm" id="driveSelectUnprocessedBtn">未処理を全選択</button>
       <button class="btn btn-sm" id="driveSelectClearBtn">選択を解除</button>
       <button class="btn btn-sm btn-primary" id="driveBatchBtn" disabled>選択した0件を一括文字起こし</button>
+      <button class="btn btn-sm" id="driveBgBtn" disabled>選択した0件をバックグラウンドで処理(閉じてOK)</button>
     </div>
     <div id="driveFileList" style="margin-top:12px;"></div>
   </div>
@@ -150,6 +151,7 @@
       </div>
       <textarea id="resultText" readonly></textarea>
       <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-sm" id="toggleSummaryBtn" style="display:none;">要約を見る</button>
         <button class="btn btn-sm" id="copyResultBtn">コピー</button>
         <button class="btn btn-sm" id="downloadResultBtn">ダウンロード</button>
       </div>

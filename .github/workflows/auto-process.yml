@@ -1,0 +1,46 @@
+name: Auto transcribe and summarize
+
+# 1日2回(日本時間 07:30 と 19:30)、Driveの未処理の音声を「文字起こし→タイトル→要約→Driveに保存」まで自動処理する。
+# 毎朝06:00(JST)のPlaud→Driveバックアップ(gensai870/plaud)の後に動くよう、朝の実行は07:30にしている。
+# Web画面の「バックグラウンドで処理」ボタンからは file_ids を渡して手動起動される。
+on:
+  schedule:
+    - cron: '30 22 * * *'   # 07:30 JST
+    - cron: '30 10 * * *'   # 19:30 JST
+  workflow_dispatch:
+    inputs:
+      file_ids:
+        description: '処理するDriveファイルID(カンマ区切り)。空なら未処理の音声すべて'
+        required: false
+        default: ''
+
+concurrency:
+  group: auto-process
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Process files
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          GOOGLE_DRIVE_UPLOAD_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_UPLOAD_FOLDER_ID }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          FILE_IDS: ${{ github.event.inputs.file_ids }}
+        run: |
+          if [ -z "$XAI_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || [ -z "$GOOGLE_CLIENT_ID" ]; then
+            echo "::warning::必要なSecretsが未設定のため、今回の自動処理はスキップしました(PROGRESS.mdの「バックグラウンド処理の設定」を参照)"
+            exit 0
+          fi
+          node scripts/auto-process.js
