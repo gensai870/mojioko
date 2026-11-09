@@ -10,7 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       file_ids:
-        description: '処理するDriveファイルID(カンマ区切り)。空なら未処理の音声すべて'
+        description: '処理するDriveファイルID(カンマ区切り)。空なら、開始日以降の未処理の音声'
+        required: false
+        default: ''
+      max_files:
+        description: '今回処理する最大件数(空なら30件)。試運転のときは小さい数にする'
         required: false
         default: ''
 
@@ -35,12 +39,14 @@ jobs:
           # Googleのクライアントシークレットは使わず、mojioko本体から短時間有効なDriveトークンを受け取る
           JOB_TOKEN_URL: https://mojioko.vercel.app/api/drive/job-token
           JOB_SHARED_SECRET: ${{ secrets.JOB_SHARED_SECRET }}
-          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          AUTO_SOURCE_FOLDER_ID: ${{ secrets.AUTO_SOURCE_FOLDER_ID }}
+          AUTO_SINCE: '2026-09-01'   # この日より前の録音は自動処理しない
+          MAX_FILES_PER_RUN: ${{ github.event.inputs.max_files || '30' }}
           GOOGLE_DRIVE_UPLOAD_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_UPLOAD_FOLDER_ID }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           FILE_IDS: ${{ github.event.inputs.file_ids }}
         run: |
-          if [ -z "$XAI_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || [ -z "$JOB_SHARED_SECRET" ]; then
+          if [ -z "$XAI_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || [ -z "$JOB_SHARED_SECRET" ] || [ -z "$AUTO_SOURCE_FOLDER_ID" ]; then
             echo "::warning::必要なSecretsが未設定のため、今回の自動処理はスキップしました(PROGRESS.mdの「バックグラウンド処理の設定」を参照)"
             exit 0
           fi
